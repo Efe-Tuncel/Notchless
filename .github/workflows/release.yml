@@ -28,7 +28,7 @@ jobs:
         shell: bash
 
       - name: Build Release
-        run: dotnet publish Notchless.csproj -c Release -r win-x64 --self-contained false -o publish -p:Version=${{ env.VERSION }} -p:AssemblyVersion=${{ env.VERSION }}.0 -p:FileVersion=${{ env.VERSION }}.0 -p:InformationalVersion=${{ github.ref_name }}
+        run: dotnet publish Notchless.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish -p:Version=${{ env.VERSION }} -p:AssemblyVersion=${{ env.VERSION }}.0 -p:FileVersion=${{ env.VERSION }}.0 -p:InformationalVersion=${{ github.ref_name }}
 
       # SignPath ile ücretsiz imzalama (repo public olunca aktif et)
       # - name: Sign with SignPath

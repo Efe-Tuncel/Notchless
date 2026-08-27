@@ -15,6 +15,15 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        DispatcherUnhandledException += (s, ex) =>
+        {
+            System.Windows.MessageBox.Show($"Notchless hata:\n{ex.Exception}", "Notchless", MessageBoxButton.OK, MessageBoxImage.Error);
+            ex.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
+        {
+            try { System.Windows.MessageBox.Show($"Notchless fatal:\n{ex.ExceptionObject}", "Notchless", MessageBoxButton.OK, MessageBoxImage.Error); } catch { }
+        };
 
         _tray = new NotifyIcon
         {

@@ -37,10 +37,15 @@ jobs:
       - name: Create ZIP
         run: Compress-Archive -Path publish/* -DestinationPath Notchless-${{ github.ref_name }}-win-x64.zip
 
+      - name: Copy exe for direct download
+        run: Copy-Item publish/Notchless.exe Notchless-${{ github.ref_name }}-win-x64.exe
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: Notchless-${{ github.ref_name }}-win-x64.zip
+          files: |
+            Notchless-${{ github.ref_name }}-win-x64.zip
+            Notchless-${{ github.ref_name }}-win-x64.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

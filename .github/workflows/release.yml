@@ -20,8 +20,15 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Get version from tag
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+        shell: bash
+
       - name: Build Release
-        run: dotnet publish Notchless.csproj -c Release -r win-x64 --self-contained false -o publish
+        run: dotnet publish Notchless.csproj -c Release -r win-x64 --self-contained false -o publish -p:Version=${{ env.VERSION }} -p:AssemblyVersion=${{ env.VERSION }}.0 -p:FileVersion=${{ env.VERSION }}.0 -p:InformationalVersion=${{ github.ref_name }}
 
       # SignPath ile ücretsiz imzalama (repo public olunca aktif et)
       # - name: Sign with SignPath

@@ -42,6 +42,8 @@ public partial class IslandWindow : Window
     private TimeSpan _remaining = TimeSpan.Zero;
     private bool _timerRunning;
     private DispatcherTimer? _activeAnimTimer;
+    private DispatcherTimer? _auraTimer;
+    private double _auraPhase;
 
     // animation targets — CC genişletildi (Pil/Zaman sığması için 440)
     private static readonly (double w, double h, double r) CompactSize = (128, 36, 18);
@@ -260,20 +262,21 @@ public partial class IslandWindow : Window
         _notif.Dispose();
         _dlWatcher?.Dispose(); _fullscreen?.Dispose();
         _clockTimer.Stop(); _camMicTimer.Stop(); _hudTimer.Stop();
-        _countdownTimer?.Stop(); _notifHideTimer?.Stop();
+        _countdownTimer?.Stop(); _notifHideTimer?.Stop(); _auraTimer?.Stop(); _activeAnimTimer?.Stop();
     }
 
     private void OnDisplayChanged(object? s, EventArgs e) => Dispatcher.BeginInvoke(PositionOnPrimary);
 
     private void PositionOnPrimary()
     {
-        var screenW = SystemParameters.PrimaryScreenWidth;
-        // WPF units = DIP, but we already have PerMonitorV2. Use screen width in DIPs.
-        // Position island at top-center, 8px from top (margin handles inner). Window covers full width for click-through simulation.
-        // Instead we make window full width top strip, island centered inside. Window itself is 800x400, we center it.
-        // Compute primary screen in pixels via Wpf Screen? Use SystemParameters.
-        double left = (SystemParameters.WorkArea.Width - Width) / 2 + SystemParameters.WorkArea.Left;
-        Left = left;
+        // Fullscreen aura için pencere tüm ekranı kaplar (Apple Intelligence gibi ekranın hepsine yayılan glow)
+        //Island ortada kalır, FullscreenAura kenarlarda görünür
+        var wa = SystemParameters.WorkArea;
+        var psW = SystemParameters.PrimaryScreenWidth;
+        var psH = SystemParameters.PrimaryScreenHeight;
+        Width = psW;
+        Height = psH;
+        Left = 0;
         Top = 0;
         // Ensure width covers screen width for region testing: keep as is 800 centered.
     }
@@ -350,9 +353,31 @@ public partial class IslandWindow : Window
         }
         else if (_state != IslandState.Notification)
         {
-            // normal temaya dön (ApplyTransparentTheme'in brush'ı)
-            // sadece border kalınlığını sıfırla, background OnLoaded'da zaten ayarlı
             IslandBorder.BorderThickness = new Thickness(1);
+        }
+        // Fullscreen aura — Apple gibi ekranın hepsine yayılan glow, Windows renkleri
+        if (isNotif)
+        {
+            FullscreenAura.BeginAnimation(OpacityProperty, new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(320))));
+            if (_auraTimer == null)
+            {
+                _auraTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+                _auraTimer.Tick += (_, _) =>
+                {
+                    _auraPhase += 0.02;
+                    if (_auraPhase > 1) _auraPhase -= 1;
+                    double s = Math.Sin(_auraPhase * Math.PI * 2) * 0.25 + 0.5;
+                    AuraGradient.StartPoint = new WPoint(s, 0);
+                    AuraGradient.EndPoint = new WPoint(1 - s, 1);
+                    UpdateRegionForState(_state);
+                };
+            }
+            _auraTimer.Start();
+        }
+        else
+        {
+            FullscreenAura.BeginAnimation(OpacityProperty, new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(260))));
+            _auraTimer?.Stop();
         }
 
         var dur = new Duration(TimeSpan.FromMilliseconds(target == IslandState.ControlCenter ? 420 : 360));
@@ -443,10 +468,21 @@ public partial class IslandWindow : Window
         if (_hwnd == IntPtr.Zero) return;
         try
         {
-            // Get island bounds in screen pixels relative to window
-            var islandPos = IslandBorder.TranslatePoint(new WPoint(0, 0), this);
             var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this);
-            // islandPos and size are in DIPs -> convert to physical pixels
+            if (state == IslandState.Notification && FullscreenAura.Opacity > 0.05)
+            {
+                // Apple Intelligence gibi ekranın hepsine yayılan aura — tüm pencereyi göster (fullscreen border)
+                int fw = (int)Math.Round(ActualWidth * dpi.DpiScaleX);
+                int fh = (int)Math.Round(ActualHeight * dpi.DpiScaleY);
+                if (fw <= 0 || fh <= 0) return;
+                int r2 = (int)Math.Round(18 * dpi.DpiScaleX);
+                IntPtr rgnFull = NativeMethods.CreateRoundRectRgn(0, 0, fw, fh, r2 * 2, r2 * 2);
+                int ok2 = NativeMethods.SetWindowRgn(_hwnd, rgnFull, true);
+                if (ok2 == 0) NativeMethods.DeleteObject(rgnFull);
+                return;
+            }
+            // Normal: sadece ada kapsülü tıklanabilir, gerisi click-through gibi
+            var islandPos = IslandBorder.TranslatePoint(new WPoint(0, 0), this);
             int x = (int)Math.Round(islandPos.X * dpi.DpiScaleX);
             int y = (int)Math.Round(islandPos.Y * dpi.DpiScaleY);
             int w = (int)Math.Round(IslandBorder.ActualWidth * dpi.DpiScaleX);
@@ -457,7 +493,7 @@ public partial class IslandWindow : Window
             int rx = Math.Max(0, r * 2);
             IntPtr rgn = NativeMethods.CreateRoundRectRgn(x, y, x + w, y + h, rx, rx);
             int ok = NativeMethods.SetWindowRgn(_hwnd, rgn, true);
-            if (ok == 0) NativeMethods.DeleteObject(rgn); // success'te sistem sahiplenir, fail'de biz sil
+            if (ok == 0) NativeMethods.DeleteObject(rgn);
         }
         catch { }
     }

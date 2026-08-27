@@ -141,6 +141,20 @@
     </Window.Resources>
 
     <Grid x:Name="RootGrid" Background="Transparent">
+        <!-- Fullscreen Apple Intelligence aura — ekranın hepsine yayılan glow (Windows renkleri) -->
+        <Border x:Name="FullscreenAura" BorderThickness="3" CornerRadius="18" Opacity="0" IsHitTestVisible="False" Margin="4" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+            <Border.BorderBrush>
+                <LinearGradientBrush x:Name="AuraGradient" StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#FF0078D4" Offset="0"/>
+                    <GradientStop Color="#FF5B8DEF" Offset="0.33"/>
+                    <GradientStop Color="#FF50E6A0" Offset="0.66"/>
+                    <GradientStop Color="#FF00B7C3" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.BorderBrush>
+            <Border.Effect>
+                <BlurEffect Radius="10"/>
+            </Border.Effect>
+        </Border>
         <!-- Island capsule -->
         <Border x:Name="IslandBorder"
                 HorizontalAlignment="Center" VerticalAlignment="Top"

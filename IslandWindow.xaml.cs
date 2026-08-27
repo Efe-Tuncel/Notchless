@@ -284,14 +284,9 @@ public partial class IslandWindow : Window
 
     private void PositionOnPrimary()
     {
-        // Fullscreen aura için pencere tüm ekranı kaplar (Apple Intelligence gibi ekranın hepsine yayılan glow)
-        //Island ortada kalır, FullscreenAura kenarlarda görünür
-        var wa = SystemParameters.WorkArea;
-        var psW = SystemParameters.PrimaryScreenWidth;
-        var psH = SystemParameters.PrimaryScreenHeight;
-        Width = psW;
-        Height = psH;
-        Left = 0;
+        // Pencere üstte 800x540 şerit, ada ortada — fullscreen değil (screenshot tool'u engellememek için)
+        double left = (SystemParameters.WorkArea.Width - Width) / 2 + SystemParameters.WorkArea.Left;
+        Left = left;
         Top = 0;
         // Ensure width covers screen width for region testing: keep as is 800 centered.
     }
@@ -518,19 +513,6 @@ public partial class IslandWindow : Window
         try
         {
             var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this);
-            if (state == IslandState.Notification && FullscreenAura.Opacity > 0.05)
-            {
-                // Apple Intelligence gibi ekranın hepsine yayılan aura — tüm pencereyi göster (fullscreen border)
-                int fw = (int)Math.Round(ActualWidth * dpi.DpiScaleX);
-                int fh = (int)Math.Round(ActualHeight * dpi.DpiScaleY);
-                if (fw <= 0 || fh <= 0) return;
-                int r2 = (int)Math.Round(18 * dpi.DpiScaleX);
-                IntPtr rgnFull = NativeMethods.CreateRoundRectRgn(0, 0, fw, fh, r2 * 2, r2 * 2);
-                int ok2 = NativeMethods.SetWindowRgn(_hwnd, rgnFull, true);
-                if (ok2 == 0) NativeMethods.DeleteObject(rgnFull);
-                return;
-            }
-            // Normal: sadece ada kapsülü tıklanabilir, gerisi click-through gibi
             var islandPos = IslandBorder.TranslatePoint(new WPoint(0, 0), this);
             int x = (int)Math.Round(islandPos.X * dpi.DpiScaleX);
             int y = (int)Math.Round(islandPos.Y * dpi.DpiScaleY);

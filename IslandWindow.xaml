@@ -141,8 +141,8 @@
     </Window.Resources>
 
     <Grid x:Name="RootGrid" Background="Transparent">
-        <!-- Fullscreen aura — ekran ortasından etrafa saçılan Windows Fluent glow -->
-        <Border x:Name="FullscreenAura" BorderThickness="8" CornerRadius="24" Opacity="0" IsHitTestVisible="False" Margin="3" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" RenderTransformOrigin="0.5,0.5">
+        <!-- Aura — ada merkezinden etrafa saçılan Windows Fluent glow (ekranın hepsine değil, ada etrafına) -->
+        <Border x:Name="FullscreenAura" Width="{Binding Width, ElementName=IslandBorder}" Height="{Binding Height, ElementName=IslandBorder}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,8,0,0" CornerRadius="20" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
             <Border.RenderTransform>
                 <ScaleTransform x:Name="AuraScale" ScaleX="0.82" ScaleY="0.82"/>
             </Border.RenderTransform>

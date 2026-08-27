@@ -232,6 +232,17 @@ public partial class IslandWindow : Window
         }
         catch { }
         LoadTimerPresets();
+        LoadAuraIntensity();
+        // Hep üste: WPF Topmost + Win32 TOPMOST (masaüstüne tıklayınca gizlenmesin)
+        Topmost = true;
+        var topmostTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        topmostTimer.Tick += (_, _) =>
+        {
+            if (!Topmost) Topmost = true;
+            NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+        };
+        topmostTimer.Start();
 
         // Faz 5 tam ekran gizleme (GetForegroundWindow + SW_HIDE)
         _fullscreen = new FullscreenService(_hwnd);
@@ -351,8 +362,36 @@ public partial class IslandWindow : Window
             IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0x78, 0xD4));
             IslandBorder.BorderThickness = new Thickness(1.2);
         }
-        else if (_state != IslandState.Notification)
+        else
         {
+            // bildirim sonrası mavi border kaldı hatası — orijinal temaya dön
+            bool isTrans = TransparentModeCheck.IsChecked == true;
+            if (isTrans)
+            {
+                IslandBorder.Background = new System.Windows.Media.LinearGradientBrush
+                {
+                    StartPoint = new WPoint(0,0), EndPoint = new WPoint(1,1),
+                    GradientStops = new System.Windows.Media.GradientStopCollection
+                    {
+                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xE6, 0x0A, 0x0A, 0x0C), 0),
+                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xE6, 0x14, 0x14, 0x18), 1)
+                    }
+                };
+                IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
+            }
+            else
+            {
+                IslandBorder.Background = new System.Windows.Media.LinearGradientBrush
+                {
+                    StartPoint = new WPoint(0,0), EndPoint = new WPoint(1,1),
+                    GradientStops = new System.Windows.Media.GradientStopCollection
+                    {
+                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xFF, 0x0A, 0x0A, 0x0B), 0),
+                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xFF, 0x14, 0x14, 0x16), 1)
+                    }
+                };
+                IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
+            }
             IslandBorder.BorderThickness = new Thickness(1);
         }
         // Fullscreen aura — Apple gibi ekranın hepsine yayılan glow, Windows renkleri
@@ -832,6 +871,42 @@ public partial class IslandWindow : Window
             catch { }
         }
         catch { }
+    }
+    private void LoadAuraIntensity()
+    {
+        try
+        {
+            var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "aura.txt");
+            if (System.IO.File.Exists(p) && int.TryParse(System.IO.File.ReadAllText(p).Trim(), out var v) && v >= 1 && v <= 3)
+            {
+                AuraIntensitySlider.ValueChanged -= AuraIntensity_Changed;
+                AuraIntensitySlider.Value = v;
+                AuraIntensitySlider.ValueChanged += AuraIntensity_Changed;
+                ApplyAuraIntensity(v);
+                return;
+            }
+        }
+        catch { }
+        ApplyAuraIntensity(3);
+    }
+    private void ApplyAuraIntensity(int level)
+    {
+        // 1=hafif, 2=orta, 3=ağır (3x)
+        FullscreenAura.BorderThickness = new Thickness(level * 2 + 2); // 1->4, 2->6, 3->8
+        AuraBlur.Radius = level * 8; // 1->8, 2->16, 3->24
+        FullscreenAura.Opacity = 0; // görünürlük bildirimde ayarlanacak, sadece kalınlık/blur burada
+        AuraValueText.Text = level == 1 ? "Yoğun: 1x" : level == 2 ? "Yoğun: 2x" : "Yoğun: 3x";
+        try
+        {
+            var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless");
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "aura.txt"), level.ToString());
+        }
+        catch { }
+    }
+    private void AuraIntensity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        ApplyAuraIntensity((int)Math.Round(e.NewValue));
     }
     private static System.Collections.Generic.IEnumerable<T> FindVisualChildren<T>(DependencyObject dep) where T : DependencyObject
     {

@@ -141,8 +141,8 @@
     </Window.Resources>
 
     <Grid x:Name="RootGrid" Background="Transparent">
-        <!-- Fullscreen Apple Intelligence aura — ekranın hepsine yayılan glow (Windows renkleri) -->
-        <Border x:Name="FullscreenAura" BorderThickness="3" CornerRadius="18" Opacity="0" IsHitTestVisible="False" Margin="4" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+        <!-- Fullscreen aura — ekranın hepsine yayılan Windows Fluent glow (3x ağır) -->
+        <Border x:Name="FullscreenAura" BorderThickness="8" CornerRadius="20" Opacity="0" IsHitTestVisible="False" Margin="3" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
             <Border.BorderBrush>
                 <LinearGradientBrush x:Name="AuraGradient" StartPoint="0,0" EndPoint="1,1">
                     <GradientStop Color="#FF0078D4" Offset="0"/>
@@ -152,7 +152,7 @@
                 </LinearGradientBrush>
             </Border.BorderBrush>
             <Border.Effect>
-                <BlurEffect Radius="10"/>
+                <BlurEffect x:Name="AuraBlur" Radius="24"/>
             </Border.Effect>
         </Border>
         <!-- Island capsule -->
@@ -365,6 +365,17 @@
                                 <CheckBox x:Name="TransparentModeCheck" Margin="0,6,0,0" Checked="TransparentMode_Checked" Unchecked="TransparentMode_Unchecked" IsChecked="True">
                                     <TextBlock Text="Düşük opaklık" TextWrapping="Wrap" Foreground="#4CC2FF" FontSize="10" FontWeight="SemiBold"/>
                                 </CheckBox>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource BentoCard}">
+                            <StackPanel>
+                                <TextBlock Text="✨ Aura" Foreground="#888" FontSize="10"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Hafif" Foreground="#666" FontSize="8" VerticalAlignment="Center"/>
+                                    <Slider x:Name="AuraIntensitySlider" Minimum="1" Maximum="3" Value="3" Width="70" Margin="6,0" IsMoveToPointEnabled="True" ValueChanged="AuraIntensity_Changed" SmallChange="1" TickFrequency="1" IsSnapToTickEnabled="True"/>
+                                    <TextBlock Text="Ağır" Foreground="#9ECAFF" FontSize="8" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock x:Name="AuraValueText" Text="Yoğun: 3x" Foreground="#9ECAFF" FontSize="9" Margin="0,6,0,0" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                     </UniformGrid>

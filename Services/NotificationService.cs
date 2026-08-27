@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows.Automation;
 using Windows.UI.Notifications;
 using Windows.UI.Notifications.Management;
 
@@ -18,6 +19,8 @@ public class NotificationService : IDisposable
     private UserNotificationListener? _listener;
     private System.Threading.Timer? _pollTimer;
     private System.Collections.Generic.HashSet<uint> _seen = new();
+    private System.Threading.Timer? _uiaTimer;
+    private string _lastToastHash = "";
 
     public event Action<NotificationInfo>? NotificationReceived;
 
@@ -62,17 +65,66 @@ public class NotificationService : IDisposable
             }
             else
             {
-                Log($"Access denied: {Status} — Ayarlar > Gizlilik > Bildirimler kontrol et");
+                Log($"Access denied: {Status} — UIA fallback başlatılıyor (unpackaged için)");
+                StartUIAFallback();
+                // Denied olsa bile stub değil, UIA ile dene — IsSupported false kalsın ama polling çalışsın
             }
             return IsSupported;
         }
         catch (Exception ex)
         {
             Status = ex.ToString();
-            Log($"TryEnable exception: {ex}");
+            Log($"TryEnable exception: {ex} — UIA fallback");
+            StartUIAFallback();
             IsSupported = false;
             return false;
         }
+    }
+
+    private void StartUIAFallback()
+    {
+        try
+        {
+            _uiaTimer?.Dispose();
+            _uiaTimer = new System.Threading.Timer(_ => PollUIA(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+            Log("UIA fallback timer started");
+        }
+        catch (Exception ex) { Log($"UIA start err: {ex.Message}"); }
+    }
+
+    private void PollUIA()
+    {
+        try
+        {
+            var root = AutomationElement.RootElement;
+            if (root == null) return;
+            // Toast pencereleri genellikle "Windows.UI.Notifications.ToastWindow" class'ı ile gelir
+            var cond = new PropertyCondition(AutomationElement.ClassNameProperty, "Windows.UI.Notifications.ToastWindow");
+            var toasts = root.FindAll(TreeScope.Children, cond);
+            foreach (AutomationElement el in toasts)
+            {
+                try
+                {
+                    string name = el.Current.Name ?? "";
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    string hash = name.GetHashCode().ToString() + el.Current.AutomationId;
+                    if (hash == _lastToastHash) continue;
+                    _lastToastHash = hash;
+                    // Name genellikle "AppName\nTitle\nBody" formatında
+                    var parts = name.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                    string appName = parts.Length > 0 ? parts[0] : "Bildirim";
+                    string title = parts.Length > 1 ? parts[1] : name;
+                    string body = parts.Length > 2 ? string.Join(" ", parts.Skip(2)) : "";
+                    if (title.Length > 80) { body = title.Substring(80); title = title.Substring(0, 80); }
+                    Log($"UIA found: {appName} | {title}");
+                    var info = new NotificationInfo { AppName = appName, Title = title, Text = body };
+                    NotificationReceived?.Invoke(info);
+                    break; // bir tane yeterli, diğer tick'te yenisi
+                }
+                catch { }
+            }
+        }
+        catch (Exception ex) { Log($"PollUIA err: {ex.Message}"); }
     }
 
     private async Task PollAsync()
@@ -139,6 +191,7 @@ public class NotificationService : IDisposable
     {
         if (_listener != null) _listener.NotificationChanged -= OnNotificationChanged;
         _pollTimer?.Dispose(); _pollTimer = null;
+        _uiaTimer?.Dispose(); _uiaTimer = null;
         IsSupported = false;
         Log("Disabled");
     }

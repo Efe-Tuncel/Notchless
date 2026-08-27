@@ -34,7 +34,8 @@ public sealed class DownloadWatcherService : IDisposable
             };
             _watcher.Created += OnChanged;
             _watcher.Changed += OnChanged;
-            _watcher.Deleted += (s, e) => DownloadChanged?.Invoke(e.Name ?? "", "completed");
+            // Deleted -> silme, tamamlandı değil (eski hatada Completed gösteriliyordu)
+            _watcher.Deleted += (s, e) => { /* yoksay: silme != indirme bitti */ };
             _watcher.Renamed += (s, e) =>
             {
                 // .crdownload -> gerçek dosya rename = tamamlandı

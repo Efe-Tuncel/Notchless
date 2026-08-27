@@ -41,6 +41,7 @@ public partial class IslandWindow : Window
     private DispatcherTimer? _countdownTimer;
     private TimeSpan _remaining = TimeSpan.Zero;
     private bool _timerRunning;
+    private DispatcherTimer? _activeAnimTimer;
 
     // animation targets — CC genişletildi (Pil/Zaman sığması için 440)
     private static readonly (double w, double h, double r) CompactSize = (128, 36, 18);
@@ -375,10 +376,11 @@ public partial class IslandWindow : Window
         var sw = System.Diagnostics.Stopwatch.StartNew();
         long lastTicks = sw.ElapsedTicks;
         double maxFrameMs = 0;
+        _activeAnimTimer?.Stop();
         var unifiedTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _activeAnimTimer = unifiedTimer;
         unifiedTimer.Tick += (_, _) =>
         {
-            // Spike B: frame süresi ölçümü
             long now = sw.ElapsedTicks;
             double frameMs = (now - lastTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             lastTicks = now;
@@ -394,6 +396,7 @@ public partial class IslandWindow : Window
             if (prog >= 1)
             {
                 unifiedTimer.Stop();
+                if (_activeAnimTimer == unifiedTimer) _activeAnimTimer = null;
                 sw.Stop();
                 UpdateRegionForState(target);
 #if DEBUG
@@ -453,7 +456,8 @@ public partial class IslandWindow : Window
             int r = (int)Math.Round(rDip * dpi.DpiScaleX);
             int rx = Math.Max(0, r * 2);
             IntPtr rgn = NativeMethods.CreateRoundRectRgn(x, y, x + w, y + h, rx, rx);
-            NativeMethods.SetWindowRgn(_hwnd, rgn, true);
+            int ok = NativeMethods.SetWindowRgn(_hwnd, rgn, true);
+            if (ok == 0) NativeMethods.DeleteObject(rgn); // success'te sistem sahiplenir, fail'de biz sil
         }
         catch { }
     }
@@ -696,10 +700,22 @@ public partial class IslandWindow : Window
     }
     private void MonitorPicker_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
-        if (MonitorPicker.SelectedItem is string sel)
+        if (MonitorPicker.SelectedItem is string sel && MonitorPicker.SelectedIndex >= 0)
         {
-            // Seçili DeviceName'den kalıcı WMI ID'ye çöz — ayara bu yazılmalı (reboot-safe)
-            // Örn: Properties.Settings.Default.MonitorId = _monitorIdMap[deviceName]
+            var idx = MonitorPicker.SelectedIndex;
+            var screens = System.Windows.Forms.Screen.AllScreens;
+            if (idx < screens.Length)
+            {
+                var device = screens[idx].DeviceName;
+                var wmiId = _monitorIdMap.TryGetValue(device, out var id) ? id : device;
+                try
+                {
+                    var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless");
+                    System.IO.Directory.CreateDirectory(dir);
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "monitor.txt"), wmiId);
+                }
+                catch { }
+            }
         }
     }
 
@@ -882,23 +898,30 @@ public partial class IslandWindow : Window
             {
                 using var subKey = key.OpenSubKey(sub);
                 if (subKey == null) continue;
-                var start = subKey.GetValue("LastUsedTimeStart") as string;
-                var stop = subKey.GetValue("LastUsedTimeStop") as string;
-                if (string.IsNullOrEmpty(start)) continue;
-                // If Stop is empty or 0 -> still in use; if Stop > Start -> not in use
-                if (string.IsNullOrEmpty(stop) || stop == "0") return true;
-                // Parse as FILETIME-like? It's stored as hex ticks. Simple: if stop lexicographically <= start, in use
-                // Fallback: try to compare
-                try
-                {
-                    long s = long.Parse(start);
-                    long e2 = long.Parse(stop);
-                    if (e2 == 0 || e2 <= s) return true;
-                }
-                catch { if (stop == start) return true; }
+                object? startObj = subKey.GetValue("LastUsedTimeStart");
+                object? stopObj = subKey.GetValue("LastUsedTimeStop");
+                long start = ToFileTimeTicks(startObj);
+                long stop = ToFileTimeTicks(stopObj);
+                if (start == 0) continue;
+                if (stop == 0 || stop <= start) return true;
             }
         }
         catch { }
         return false;
+    }
+    private static long ToFileTimeTicks(object? v)
+    {
+        if (v == null) return 0;
+        if (v is long l) return l;
+        if (v is int i) return i;
+        if (v is byte[] b && b.Length >= 8) return BitConverter.ToInt64(b, 0);
+        if (v is string s)
+        {
+            s = s.Trim();
+            if (long.TryParse(s, out var ls)) return ls;
+            // hex string? try hex
+            if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) && long.TryParse(s.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out var hx)) return hx;
+        }
+        try { return Convert.ToInt64(v); } catch { return 0; }
     }
 }

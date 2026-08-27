@@ -247,7 +247,7 @@ public partial class IslandWindow : Window
         PreviewKeyDown += (s, e) =>
         {
             if (e.Key == Key.N && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
-                ShowNotification(new NotificationService.NotificationInfo { AppName = "WhatsApp", Title = "Efe: toplantı 19:00'da", Text = "Toplantı linki geldi" });
+                ShowNotification(new NotificationInfo { AppName = "WhatsApp", Title = "Efe: toplantı 19:00'da", Text = "Toplantı linki geldi" });
         };
     }
 
@@ -404,7 +404,7 @@ public partial class IslandWindow : Window
         unifiedTimer.Start();
     }
 
-    private void ShowNotification(NotificationService.NotificationInfo info)
+    private void ShowNotification(NotificationInfo info)
     {
         NotifAppText.Text = info.AppName.Length > 28 ? info.AppName.Substring(0, 28) : info.AppName;
         NotifTitleText.Text = info.Title.Length > 52 ? info.Title.Substring(0, 52) + "…" : info.Title;

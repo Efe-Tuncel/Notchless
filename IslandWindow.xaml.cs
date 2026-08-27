@@ -394,10 +394,13 @@ public partial class IslandWindow : Window
             }
             IslandBorder.BorderThickness = new Thickness(1);
         }
-        // Fullscreen aura — Apple gibi ekranın hepsine yayılan glow, Windows renkleri
+        // Fullscreen aura — ekran ortasından etrafa saçılan (scale 0.82→1) Windows glow
         if (isNotif)
         {
-            FullscreenAura.BeginAnimation(OpacityProperty, new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(320))));
+            FullscreenAura.BeginAnimation(OpacityProperty, new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(380))));
+            var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
+            AuraScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(520))) { EasingFunction = easeOut });
+            AuraScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(520))) { EasingFunction = easeOut });
             if (_auraTimer == null)
             {
                 _auraTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
@@ -415,7 +418,10 @@ public partial class IslandWindow : Window
         }
         else
         {
-            FullscreenAura.BeginAnimation(OpacityProperty, new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(260))));
+            FullscreenAura.BeginAnimation(OpacityProperty, new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(320))));
+            var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
+            AuraScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, new DoubleAnimation(0.82, new Duration(TimeSpan.FromMilliseconds(340))) { EasingFunction = easeIn });
+            AuraScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, new DoubleAnimation(0.82, new Duration(TimeSpan.FromMilliseconds(340))) { EasingFunction = easeIn });
             _auraTimer?.Stop();
         }
 

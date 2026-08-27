@@ -255,8 +255,18 @@ public partial class IslandWindow : Window
             HudToast.Visibility = Visibility.Visible;
         });
         // Bildirim dinleyici — gerçek Windows NotificationListener
-        _ = _notif.TryEnableAsync();
         _notif.NotificationReceived += info => Dispatcher.BeginInvoke(() => ShowNotification(info));
+        _ = _notif.TryEnableAsync().ContinueWith(t =>
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (!t.Result)
+                {
+                    // İzin yok — kullanıcıya 1 kez göster
+                    try { System.Diagnostics.Debug.WriteLine($"[Notif] not enabled: {_notif.Status}"); } catch { }
+                }
+            });
+        });
     }
 
     private void OnClosed(object? sender, EventArgs e)

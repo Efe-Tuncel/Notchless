@@ -254,15 +254,9 @@ public partial class IslandWindow : Window
             HudValue.Text = state == "completed" ? $"{file} indi" : $"{file} indiriliyor…";
             HudToast.Visibility = Visibility.Visible;
         });
-        // Bildirim dinleyici — Windows NotificationListener (Apple animasyonu Windows renkleriyle)
+        // Bildirim dinleyici — gerçek Windows NotificationListener
         _ = _notif.TryEnableAsync();
         _notif.NotificationReceived += info => Dispatcher.BeginInvoke(() => ShowNotification(info));
-        // Test için: Ctrl+Shift+N ile fake bildirim (debug)
-        PreviewKeyDown += (s, e) =>
-        {
-            if (e.Key == Key.N && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
-                ShowNotification(new NotificationInfo { AppName = "WhatsApp", Title = "Efe: toplantı 19:00'da", Text = "Toplantı linki geldi" });
-        };
     }
 
     private void OnClosed(object? sender, EventArgs e)

@@ -1,5 +1,8 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Windows.UI.Notifications;
+using Windows.UI.Notifications.Management;
 
 namespace Notchless.Services;
 
@@ -10,25 +13,69 @@ public class NotificationInfo
     public string Text { get; set; } = "";
 }
 
-// Stub — gerçek OS bildirim dinleme WinRT yüzünden build patlatıyordu (v1.0.6-1.0.8).
-// Şimdilik sadece fake (Ctrl+Shift+N) çalışır, build geçer. Sonra Microsoft.Windows.SDK.Contracts ile geri açacağız.
 public class NotificationService : IDisposable
 {
+    private UserNotificationListener? _listener;
+
     public event Action<NotificationInfo>? NotificationReceived;
 
     public bool IsSupported { get; private set; }
-    public string Status { get; private set; } = "Stub — OS dinleme kapalı (build fix)";
+    public string Status { get; private set; } = "Kapalı";
 
-    public Task<bool> TryEnableAsync()
+    public async Task<bool> TryEnableAsync()
     {
-        IsSupported = false;
-        Status = "Stub";
-        return Task.FromResult(false);
+        try
+        {
+            _listener = UserNotificationListener.Current;
+            var access = await _listener.RequestAccessAsync();
+            IsSupported = access == UserNotificationListenerAccessStatus.Allowed;
+            Status = access.ToString();
+            if (IsSupported)
+            {
+                _listener.NotificationChanged += OnNotificationChanged;
+            }
+            return IsSupported;
+        }
+        catch (Exception ex)
+        {
+            Status = ex.Message;
+            IsSupported = false;
+            return false;
+        }
     }
 
-    // İlerde WinRT açılınca buradan tetiklenecek
-    public void Simulate(NotificationInfo info) => NotificationReceived?.Invoke(info);
+    private void OnNotificationChanged(UserNotificationListener sender, UserNotificationChangedEventArgs args)
+    {
+        try
+        {
+            if (args.ChangeKind != UserNotificationChangedKind.Added) return;
+            var notif = sender.GetNotification(args.UserNotificationId);
+            if (notif == null) return;
+            var visual = notif.Notification.Visual;
+            if (visual == null) return;
+            var binding = visual.GetBinding(KnownNotificationBindings.ToastGeneric);
+            if (binding == null) return;
 
-    public void Disable() { IsSupported = false; }
+            string appName = notif.AppInfo.DisplayInfo.DisplayName ?? notif.AppInfo.AppUserModelId ?? "Bildirim";
+            if (appName.Contains("Notchless", StringComparison.OrdinalIgnoreCase)) return;
+
+            var texts = binding.GetTextElements().ToList();
+            string title = texts.Count > 0 ? texts[0].Text ?? "" : "";
+            string body = texts.Count > 1 ? string.Join(" ", texts.Skip(1).Select(t => t.Text)) : "";
+
+            if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body)) return;
+
+            var info = new NotificationInfo { AppName = appName, Title = title, Text = body };
+            NotificationReceived?.Invoke(info);
+        }
+        catch { }
+    }
+
+    public void Disable()
+    {
+        if (_listener != null) _listener.NotificationChanged -= OnNotificationChanged;
+        IsSupported = false;
+    }
+
     public void Dispose() => Disable();
 }

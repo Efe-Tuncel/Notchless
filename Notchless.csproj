@@ -16,11 +16,6 @@
 
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <PublishReadyToRun>true</PublishReadyToRun>
-    <!-- Profesyonel dağıtım: trimmed single-file (~110MB) + framework-dependent alternatifi workflow'da -->
-    <PublishTrimmed>true</PublishTrimmed>
-    <TrimMode>partial</TrimMode>
-    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
-    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>

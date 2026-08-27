@@ -152,6 +152,22 @@
                 <DropShadowEffect Color="Black" Opacity="0.6" BlurRadius="20" ShadowDepth="4"/>
             </Border.Effect>
             <Grid>
+                <!-- Notification (Windows tarzı, Apple morfu Windows renkleriyle) -->
+                <Grid x:Name="NotificationGrid" Visibility="Collapsed" Margin="12,7">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Width="34" Height="34" CornerRadius="8" Background="#0078D4" VerticalAlignment="Center">
+                        <TextBlock Text="◧" Foreground="White" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="NotifAppText" Text="WhatsApp" Foreground="#9ECAFF" FontSize="9" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="NotifTitleText" Text="Efe: toplantı 19:00'da" Foreground="White" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="NotifBodyText" Text="Mesaj içeriği burada" Foreground="#CCCCCC" FontSize="11" TextTrimming="CharacterEllipsis" MaxHeight="32" TextWrapping="Wrap" Visibility="Collapsed"/>
+                    </StackPanel>
+                </Grid>
+
                 <!-- Compact content -->
                 <Grid x:Name="CompactGrid" Visibility="Visible">
                     <Grid.ColumnDefinitions>

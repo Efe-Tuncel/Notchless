@@ -15,7 +15,7 @@ namespace Notchless;
 
 public partial class IslandWindow : Window
 {
-    private enum IslandState { Compact, Expanded, ControlCenter }
+    private enum IslandState { Compact, Expanded, ControlCenter, Notification }
 
     private IslandState _state = IslandState.Compact;
     private IntPtr _hwnd;
@@ -33,8 +33,10 @@ public partial class IslandWindow : Window
     private readonly CalendarService _calendar = new();
     private readonly AudioKeyHookService _audioHook = new();
     private readonly BluetoothBatteryService _bt = new();
+    private readonly NotificationService _notif = new();
     private DownloadWatcherService? _dlWatcher;
     private FullscreenService? _fullscreen;
+    private DispatcherTimer? _notifHideTimer;
 
     private DispatcherTimer? _countdownTimer;
     private TimeSpan _remaining = TimeSpan.Zero;
@@ -44,6 +46,7 @@ public partial class IslandWindow : Window
     private static readonly (double w, double h, double r) CompactSize = (128, 36, 18);
     private static readonly (double w, double h, double r) ExpandedSize = (380, 168, 20);
     private static readonly (double w, double h, double r) ControlCenterSize = (440, 480, 24);
+    private static readonly (double w, double h, double r) NotificationSize = (360, 78, 20);
 
     public IslandWindow()
     {
@@ -75,9 +78,13 @@ public partial class IslandWindow : Window
         BuildMonitorPicker();
         PreviewMouseLeftButtonDown += (_, e) =>
         {
-            // Sadece Compact'te tıklayınca Expanded'a geç — Expanded'te boş yere tıklayınca ControlCenter'a atlama kaldırıldı (kullanıcı şikayeti)
             if (IsInteractiveControl(e.OriginalSource as DependencyObject)) return;
             if (_state == IslandState.Compact) AnimateTo(IslandState.Expanded);
+            else if (_state == IslandState.Notification)
+            {
+                _notifHideTimer?.Stop();
+                AnimateTo(IslandState.Compact);
+            }
         };
         // outside click to collapse -> handle root mouse down outside island
         RootGrid.MouseDown += (s, e) =>
@@ -230,12 +237,18 @@ public partial class IslandWindow : Window
         _dlWatcher.DownloadChanged += (file, state) => Dispatcher.BeginInvoke(() =>
         {
             if (state == "completed") ShowHud("⬇", 100, false);
-            // HudValue'yi dosya adıyla güncelle
             HudValue.Text = state == "completed" ? $"{file} indi" : $"{file} indiriliyor…";
             HudToast.Visibility = Visibility.Visible;
-            // 1.7sn sonra kapanması zaten _hudTimer ile olacak — yeniden başlat
-            // (ShowHud zaten timer'ı resetler ama burada dosya adı için manuel)
         });
+        // Bildirim dinleyici — Windows NotificationListener (Apple animasyonu Windows renkleriyle)
+        _ = _notif.TryEnableAsync();
+        _notif.NotificationReceived += info => Dispatcher.BeginInvoke(() => ShowNotification(info));
+        // Test için: Ctrl+Shift+N ile fake bildirim (debug)
+        PreviewKeyDown += (s, e) =>
+        {
+            if (e.Key == Key.N && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+                ShowNotification(new NotificationService.NotificationInfo { AppName = "WhatsApp", Title = "Efe: toplantı 19:00'da", Text = "Toplantı linki geldi" });
+        };
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -243,9 +256,10 @@ public partial class IslandWindow : Window
         SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         _source?.RemoveHook(WndProc);
         _audio.Dispose(); _brightness.Dispose(); _power.Dispose(); _media.Dispose(); _audioHook.Dispose(); _bt.Dispose();
+        _notif.Dispose();
         _dlWatcher?.Dispose(); _fullscreen?.Dispose();
         _clockTimer.Stop(); _camMicTimer.Stop(); _hudTimer.Stop();
-        _countdownTimer?.Stop();
+        _countdownTimer?.Stop(); _notifHideTimer?.Stop();
     }
 
     private void OnDisplayChanged(object? s, EventArgs e) => Dispatcher.BeginInvoke(PositionOnPrimary);
@@ -316,13 +330,29 @@ public partial class IslandWindow : Window
             IslandState.Compact => CompactSize,
             IslandState.Expanded => ExpandedSize,
             IslandState.ControlCenter => ControlCenterSize,
+            IslandState.Notification => NotificationSize,
             _ => CompactSize
         };
 
-        // Visibility switch immediately for content
+        // Visibility switch immediately for content — Notification Windows tarzı oval
+        bool isNotif = target == IslandState.Notification;
         CompactGrid.Visibility = target == IslandState.Compact ? Visibility.Visible : Visibility.Collapsed;
         ExpandedGrid.Visibility = target == IslandState.Expanded ? Visibility.Visible : Visibility.Collapsed;
         ControlCenterGrid.Visibility = target == IslandState.ControlCenter ? Visibility.Visible : Visibility.Collapsed;
+        NotificationGrid.Visibility = isNotif ? Visibility.Visible : Visibility.Collapsed;
+        // Windows tarzı arka plan: bildirimde Fluent koyu + mavi border
+        if (isNotif)
+        {
+            IslandBorder.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x1F, 0x1F, 0x1F));
+            IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0x78, 0xD4));
+            IslandBorder.BorderThickness = new Thickness(1.2);
+        }
+        else if (_state != IslandState.Notification)
+        {
+            // normal temaya dön (ApplyTransparentTheme'in brush'ı)
+            // sadece border kalınlığını sıfırla, background OnLoaded'da zaten ayarlı
+            IslandBorder.BorderThickness = new Thickness(1);
+        }
 
         var dur = new Duration(TimeSpan.FromMilliseconds(target == IslandState.ControlCenter ? 420 : 360));
 
@@ -372,6 +402,30 @@ public partial class IslandWindow : Window
             }
         };
         unifiedTimer.Start();
+    }
+
+    private void ShowNotification(NotificationService.NotificationInfo info)
+    {
+        NotifAppText.Text = info.AppName.Length > 28 ? info.AppName.Substring(0, 28) : info.AppName;
+        NotifTitleText.Text = info.Title.Length > 52 ? info.Title.Substring(0, 52) + "…" : info.Title;
+        if (!string.IsNullOrWhiteSpace(info.Text))
+        {
+            NotifBodyText.Text = info.Text.Length > 64 ? info.Text.Substring(0, 64) + "…" : info.Text;
+            NotifBodyText.Visibility = Visibility.Visible;
+            // body varsa biraz daha uzun göster
+        }
+        else NotifBodyText.Visibility = Visibility.Collapsed;
+
+        // Apple'dan alınmış morph (BackEase) ama Windows renkleri ile
+        AnimateTo(IslandState.Notification);
+        _notifHideTimer?.Stop();
+        _notifHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(string.IsNullOrWhiteSpace(info.Text) ? 3.2 : 4.5) };
+        _notifHideTimer.Tick += (_, _) =>
+        {
+            _notifHideTimer?.Stop();
+            if (_state == IslandState.Notification) AnimateTo(IslandState.Compact);
+        };
+        _notifHideTimer.Start();
     }
 
     private static void TaskDelay(TimeSpan d, Action a)

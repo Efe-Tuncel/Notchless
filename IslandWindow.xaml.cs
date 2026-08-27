@@ -891,10 +891,11 @@ public partial class IslandWindow : Window
     }
     private void ApplyAuraIntensity(int level)
     {
+        if (FullscreenAura == null || AuraBlur == null || AuraValueText == null) return;
         // 1=hafif, 2=orta, 3=ağır (3x)
         FullscreenAura.BorderThickness = new Thickness(level * 2 + 2); // 1->4, 2->6, 3->8
         AuraBlur.Radius = level * 8; // 1->8, 2->16, 3->24
-        FullscreenAura.Opacity = 0; // görünürlük bildirimde ayarlanacak, sadece kalınlık/blur burada
+        // Opacity'yi sıfırlama — bildirim sırasında 1, değilse 0 kalmalı; burada dokunma
         AuraValueText.Text = level == 1 ? "Yoğun: 1x" : level == 2 ? "Yoğun: 2x" : "Yoğun: 3x";
         try
         {

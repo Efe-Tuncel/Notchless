@@ -1,0 +1,360 @@
+<Window x:Class="Notchless.IslandWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Notchless" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
+        Width="800" Height="540" Left="0" Top="0"
+        AllowDrop="True" ShowActivated="False">
+    <Window.Resources>
+        <!-- Düşük opaklık — screenshot'taki gibi %85 opak, WDAC blur'suz -->
+        <LinearGradientBrush x:Key="IslandGradient" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#E60A0A0B" Offset="0"/>
+            <GradientStop Color="#E6141416" Offset="1"/>
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="BorderGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#30FFFFFF" Offset="0"/>
+            <GradientStop Color="#10FFFFFF" Offset="1"/>
+        </LinearGradientBrush>
+        <Style x:Key="IconBtn" TargetType="Button">
+            <Setter Property="Background" Value="#E61A1A1E"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="10" Padding="8,6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Dark ComboBox / CheckBox — beyaz kutu düzeltmesi -->
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#1A1A1E"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#333"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" SnapsToDevicePixels="True"/>
+                            <ToggleButton Grid.Column="0" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Background="Transparent" BorderThickness="0" Focusable="False" ClickMode="Press"/>
+                            <ContentPresenter x:Name="ContentSite" Margin="{TemplateBinding Padding}" HorizontalAlignment="Left" VerticalAlignment="Center" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                            <Popup x:Name="PART_Popup" AllowsTransparency="True" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" PopupAnimation="Fade">
+                                <Border Background="#1E1E20" BorderBrush="#333" BorderThickness="1" CornerRadius="8" MaxHeight="200">
+                                    <ScrollViewer CanContentScroll="True">
+                                        <StackPanel IsItemsHost="True"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#1E1E20"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="6" Margin="2">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#2A2A2E"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#2E2E32"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#AAAAAA"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Margin" Value="0,6,0,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal">
+                            <Border x:Name="Bd" Width="14" Height="14" CornerRadius="3" Background="#1A1A1E" BorderBrush="#555" BorderThickness="1" Margin="0,0,6,0">
+                                <Path x:Name="Check" Data="M 2 7 L 5 10 L 11 3" Stroke="White" StrokeThickness="1.6" Visibility="Collapsed" Stretch="None" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ContentPresenter VerticalAlignment="Center" MaxWidth="110"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2A2A2E"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#888"/>
+                                <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Bento düşük opaklık — %85 -->
+        <Style x:Key="BentoCard" TargetType="Border">
+            <Setter Property="Background" Value="#E6111113"/>
+            <Setter Property="BorderBrush" Value="#1AFFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Padding" Value="14"/>
+            <Setter Property="Margin" Value="5"/>
+        </Style>
+        <Style x:Key="PillBtn" TargetType="Button" BasedOn="{StaticResource IconBtn}">
+            <Setter Property="Background" Value="#1A1A1E"/>
+            <Setter Property="BorderBrush" Value="#1AFFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="20" Padding="12,7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="AccentPill" TargetType="Button" BasedOn="{StaticResource PillBtn}">
+            <Setter Property="Background" Value="#2B5DFF"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#1AFFFFFF"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid" Background="Transparent">
+        <!-- Island capsule -->
+        <Border x:Name="IslandBorder"
+                HorizontalAlignment="Center" VerticalAlignment="Top"
+                Margin="0,8,0,0"
+                Width="128" Height="36" CornerRadius="18"
+                Background="{StaticResource IslandGradient}"
+                BorderBrush="#22FFFFFF" BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.6" BlurRadius="20" ShadowDepth="4"/>
+            </Border.Effect>
+            <Grid>
+                <!-- Compact content -->
+                <Grid x:Name="CompactGrid" Visibility="Visible">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center" Grid.Column="0">
+                        <Ellipse Width="8" Height="8" Fill="#00FF88">
+                            <Ellipse.Effect><DropShadowEffect Color="#00FF88" BlurRadius="6" ShadowDepth="0"/></Ellipse.Effect>
+                        </Ellipse>
+                        <TextBlock x:Name="CompactTimeText" Text="09:41" Foreground="White" FontSize="12" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <!-- Wave / media dot when playing -->
+                    <StackPanel x:Name="CompactWave" Orientation="Horizontal" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                        <Rectangle Width="3" Height="10" Fill="White" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0"/>
+                        <Rectangle Width="3" Height="16" Fill="White" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0"/>
+                        <Rectangle Width="3" Height="10" Fill="White" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0"/>
+                    </StackPanel>
+                    <StackPanel x:Name="CompactBatteryPanel" Orientation="Horizontal" Grid.Column="2" Margin="0,0,10,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="CompactBatteryText" Text="87%" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <Border Width="22" Height="11" CornerRadius="3" BorderBrush="#55FFFFFF" BorderThickness="1" Padding="1">
+                            <Grid>
+                                <Rectangle x:Name="CompactBatteryFill" Fill="White" RadiusX="1" RadiusY="1" HorizontalAlignment="Left" Width="14"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel x:Name="CompactAcPanel" Orientation="Horizontal" Grid.Column="2" Margin="0,0,10,0" VerticalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock Text="⚡ AC" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Expanded content -->
+                <Grid x:Name="ExpandedGrid" Visibility="Collapsed" Margin="16,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <!-- Top row: media or status -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Width="44" Height="44" CornerRadius="8" Background="#1E1E20" Grid.Column="0">
+                            <Grid>
+                                <Image x:Name="AlbumArt" Stretch="UniformToFill"/>
+                                <TextBlock Text="♪" Foreground="#666" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" x:Name="AlbumPlaceholder"/>
+                            </Grid>
+                            <Border.Clip>
+                                <RectangleGeometry Rect="0,0,44,44" RadiusX="8" RadiusY="8"/>
+                            </Border.Clip>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="MediaTitle" Text="Çalan bir şey yok" Foreground="White" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="MediaArtist" Text="—" Foreground="#888" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                            <ProgressBar x:Name="MediaProgress" Height="2" Margin="0,6,0,0" Foreground="White" Background="#2A2A2E" BorderThickness="0" Maximum="100" Value="0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IconBtn}" Click="Prev_Click" Margin="3,0" Content="⏮" FontSize="13" Padding="10,6" ToolTip="Önceki"/>
+                            <Button x:Name="PlayPauseBtn" Style="{StaticResource IconBtn}" Click="PlayPause_Click" Margin="3,0" Content="⏸" FontSize="13" Padding="10,6" ToolTip="Oynat/Duraklat"/>
+                            <Button Style="{StaticResource IconBtn}" Click="Next_Click" Margin="3,0" Content="⏭" FontSize="13" Padding="10,6" ToolTip="Sonraki"/>
+                        </StackPanel>
+                    </Grid>
+                    <!-- Sliders row -->
+                    <Grid Grid.Row="1" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel x:Name="VolumePanel" Grid.Column="0" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <TextBlock Text="🔊" FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="VolumeLabel" Text="42%" Foreground="White" FontSize="11" Margin="6,0,0,0"/>
+                                <TextBlock x:Name="MuteDot" Text=" MUTED" Foreground="#FF4444" FontSize="10" Visibility="Collapsed"/>
+                            </StackPanel>
+                            <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="42" Style="{StaticResource {x:Type Slider}}" Foreground="White"
+                                    ValueChanged="VolumeSlider_ValueChanged" IsMoveToPointEnabled="True"/>
+                        </StackPanel>
+                        <StackPanel x:Name="BrightnessPanel" Grid.Column="1" Margin="8,0,0,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <TextBlock Text="☀" FontSize="11" VerticalAlignment="Center" Foreground="White"/>
+                                <TextBlock x:Name="BrightnessLabel" Text="70%" Foreground="White" FontSize="11" Margin="6,0,0,0"/>
+                                <TextBlock x:Name="BrightnessUnsupported" Text="— dahili ekran yok" Foreground="#666" FontSize="10" Margin="6,0,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Slider x:Name="BrightnessSlider" Minimum="0" Maximum="100" Value="70"
+                                    ValueChanged="BrightnessSlider_ValueChanged" IsMoveToPointEnabled="True"/>
+                        </StackPanel>
+                    </Grid>
+                    <Button Grid.Row="2" Content="⋯ Kontrol Merkezi" Style="{StaticResource IconBtn}" FontSize="11" Margin="0,10,0,0" HorizontalAlignment="Center" Click="OpenControlCenter_Click"/>
+                </Grid>
+
+                <!-- Control Center bento -->
+                <Grid x:Name="ControlCenterGrid" Visibility="Collapsed" Margin="16,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Notchless — Kontrol Merkezi" Foreground="#AAAAAA" FontSize="10" Margin="0,0,0,8" FontFamily="Consolas" HorizontalAlignment="Center"/>
+                    <UniformGrid Grid.Row="1" Columns="3" Rows="2">
+                        <Border x:Name="CCBatteryCard" Style="{StaticResource BentoCard}">
+                            <StackPanel>
+                                <TextBlock Text="🔋 Pil" Foreground="#888" FontSize="9"/>
+                                <TextBlock x:Name="CCBatteryText" Text="87% — Şarj oluyor" Foreground="White" FontSize="11" FontWeight="SemiBold" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="CCBatterySub" Text="~2 sa 14 dk kaldı" Foreground="#666" FontSize="9" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="BtBatteryText" Text="" Foreground="#4CC2FF" FontSize="8" Margin="0,4,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource BentoCard}">
+                            <StackPanel>
+                                <TextBlock Text="⏱ Zamanlayıcı" Foreground="#888" FontSize="9"/>
+                                <WrapPanel x:Name="PresetWrap" Margin="0,6,0,0" HorizontalAlignment="Center">
+                                    <Button x:Name="PresetBtn1" Content="1 dk" Style="{StaticResource AccentPill}" FontSize="9" Padding="8,4" Margin="0,0,4,0" Click="TimerPreset_Click" Tag="1"/>
+                                    <Button x:Name="PresetBtn2" Content="10 dk" Style="{StaticResource AccentPill}" FontSize="9" Padding="8,4" Margin="0,0,4,0" Click="TimerPreset_Click" Tag="10"/>
+                                    <Button x:Name="PresetBtn3" Content="1 sa" Style="{StaticResource IconBtn}" FontSize="9" Padding="8,4" Click="TimerPreset_Click" Tag="60"/>
+                                </WrapPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0" HorizontalAlignment="Center">
+                                    <TextBox x:Name="CustomTimerBox" Width="44" Height="22" FontSize="9" Padding="4,2" VerticalContentAlignment="Center" Background="#1E1E20" Foreground="White" BorderBrush="#333" BorderThickness="1" ToolTip="dk gir (örn: 3)"/>
+                                    <Button Content="Ekle" Style="{StaticResource IconBtn}" FontSize="9" Padding="8,4" Margin="4,0,0,0" Click="CustomTimer_Click"/>
+                                </StackPanel>
+                                <TextBlock x:Name="TimerDisplay" Text="00:00" Foreground="White" FontSize="16" FontWeight="Bold" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,5,0,0">
+                                    <Button x:Name="TimerToggleBtn" Content="Başlat" Style="{StaticResource IconBtn}" FontSize="9" Padding="6,3" Click="TimerToggle_Click" Visibility="Collapsed"/>
+                                    <Button x:Name="TimerCancelBtn" Content="İptal" Style="{StaticResource IconBtn}" FontSize="9" Padding="6,3" Margin="4,0,0,0" Click="TimerCancel_Click" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource BentoCard}">
+                            <StackPanel>
+                                <TextBlock Text="📁 Raf (6)" Foreground="#888" FontSize="10"/>
+                                <ItemsControl x:Name="ShelfItemsControl" Margin="0,6,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" Foreground="White" FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Cursor="Hand" Tag="{Binding Path}" ToolTip="{Binding Path}" PreviewMouseLeftButtonDown="ShelfItem_Down" PreviewMouseMove="ShelfItem_Move" PreviewMouseLeftButtonUp="ShelfItem_Up"/>
+                                                <Button Grid.Column="1" Content="✕" FontSize="10" Style="{StaticResource IconBtn}" Padding="4,2" Margin="6,0,0,0" Click="ShelfRemove_Click" Tag="{Binding}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock x:Name="ShelfEmptyText" Text="Dosya sürükleyip bırakın" Foreground="#555" FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource BentoCard}">
+                            <StackPanel>
+                                <TextBlock Text="📅 Takvim" Foreground="#888" FontSize="10"/>
+                                <TextBlock x:Name="CalendarText" Text="ICS eklenmedi" Foreground="#666" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="48" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                <Button Content="Klasörü Aç" Style="{StaticResource IconBtn}" FontSize="10" Margin="0,8,0,0" Click="OpenCalendarFolder_Click"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource BentoCard}">
+                            <StackPanel>
+                                <TextBlock Text="🎙 Göstergeler" Foreground="#888" FontSize="10"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <Ellipse x:Name="CamDot" Width="8" Height="8" Fill="#333" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Kamera" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <Ellipse x:Name="MicDot" Width="8" Height="8" Fill="#333" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Mikrofon" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource BentoCard}">
+                            <StackPanel>
+                                <TextBlock Text="🖥 Monitör" Foreground="#888" FontSize="10"/>
+                                <ComboBox x:Name="MonitorPicker" Margin="0,8,0,0" SelectionChanged="MonitorPicker_Changed" FontSize="10" ToolTip="{Binding SelectedItem, RelativeSource={RelativeSource Self}}"/>
+                                <CheckBox x:Name="ExcludeCaptureCheck" Margin="0,10,0,0" Checked="ExcludeCapture_Checked" Unchecked="ExcludeCapture_Unchecked">
+                                    <TextBlock Text="Ekran görüntüsünden gizle" TextWrapping="Wrap" Foreground="#888" FontSize="10"/>
+                                </CheckBox>
+                                <CheckBox x:Name="AudioHookCheck" Margin="0,6,0,0" Checked="AudioHook_Checked" Unchecked="AudioHook_Unchecked">
+                                    <TextBlock Text="Ses tuşlarını yakala" TextWrapping="Wrap" Foreground="#888" FontSize="10"/>
+                                </CheckBox>
+                                <CheckBox x:Name="TransparentModeCheck" Margin="0,6,0,0" Checked="TransparentMode_Checked" Unchecked="TransparentMode_Unchecked" IsChecked="True">
+                                    <TextBlock Text="Düşük opaklık" TextWrapping="Wrap" Foreground="#4CC2FF" FontSize="10" FontWeight="SemiBold"/>
+                                </CheckBox>
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+                    <!-- Bottom bar -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0" VerticalAlignment="Center">
+                        <Button Content="⚙ Ayarlar" Style="{StaticResource PillBtn}" FontSize="11" Margin="4,0" Click="Settings_Click"/>
+                        <Button Content="✕ Kapat" Style="{StaticResource PillBtn}" FontSize="11" Margin="4,0" Click="CloseControlCenter_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- HUD toast above island -->
+        <Border x:Name="HudToast" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,52,0,0"
+                Background="#111113" CornerRadius="12" Padding="12,8" Visibility="Collapsed" BorderBrush="#22FFFFFF" BorderThickness="1">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="HudIcon" Text="🔊" FontSize="14" VerticalAlignment="Center"/>
+                <ProgressBar x:Name="HudBar" Width="120" Height="4" Margin="10,0,0,0" Foreground="White" Background="#2A2A2E" Maximum="100" Value="50"/>
+                <TextBlock x:Name="HudValue" Text="50%" Foreground="White" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

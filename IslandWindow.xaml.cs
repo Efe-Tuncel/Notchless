@@ -798,13 +798,25 @@ public partial class IslandWindow : Window
     {
         try
         {
-            var sw = new SettingsWindow(this) { Owner = this };
+            var sw = new SettingsWindow(this);
+            // Owner Topmost ToolWindow ile z-order çakışmaması için Owner atama yok, CenterScreen kullan
+            sw.WindowStartupLocation = WindowStartupLocation.CenterScreen;
             sw.ShowDialog();
             // dönüşte tema yeniden uygula (preview rollback vs)
             _theme.Load();
             _theme.ApplyTo(this);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            try
+            {
+                var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless");
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "startup.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} Settings open err: {ex}\n");
+            }
+            catch { }
+            System.Windows.MessageBox.Show($"Ayarlar açılamadı:\n{ex.Message}\n\n{ex.StackTrace}", "Notchless", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void TransparentMode_Checked(object sender, RoutedEventArgs e)

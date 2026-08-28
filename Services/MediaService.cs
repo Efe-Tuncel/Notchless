@@ -9,6 +9,20 @@ using Windows.Storage.Streams;
 
 namespace Notchless.Services;
 
+internal static class MediaLog
+{
+    public static void Write(string msg)
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless");
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "startup.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [Media] {msg}\n");
+        }
+        catch { }
+    }
+}
+
 public sealed class MediaService : IDisposable
 {
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
@@ -139,6 +153,7 @@ public sealed class MediaService : IDisposable
             }
             else
             {
+                try { MediaLog.Write($"Thumbnail null for '{props.Title}' artist='{props.Artist}' session={_currentSession.SourceAppUserModelId}"); } catch { }
                 try { System.Diagnostics.Debug.WriteLine($"[Media] Thumbnail null for '{props.Title}' session={_currentSession.SourceAppUserModelId}"); } catch { }
             }
             var isPlaying = playback?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;

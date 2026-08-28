@@ -106,6 +106,7 @@ public partial class SettingsWindow : Window
 
     private void NotifDuration_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
+        if (NotifDurationText == null) return;
         NotifDurationText.Text = $"{e.NewValue:0.0} sn";
         SaveSimple("notif_duration.txt", e.NewValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }

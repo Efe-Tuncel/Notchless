@@ -34,6 +34,7 @@ public partial class IslandWindow : Window
     private readonly AudioKeyHookService _audioHook = new();
     private readonly BluetoothBatteryService _bt = new();
     private readonly NotificationService _notif = new();
+    private readonly ThemeService _theme = new();
     private DownloadWatcherService? _dlWatcher;
     private FullscreenService? _fullscreen;
     private DispatcherTimer? _notifHideTimer;
@@ -212,23 +213,15 @@ public partial class IslandWindow : Window
         UpdateRegionForState(_state);
         // dpi changed handling is via WndProc
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
-        // Şeffaf mod — kayıtlı temayı uygula (WDAC dostu, düşük opaklık)
+        // Tema — ThemeService (10 tema) + eski theme.txt migrate
         try
         {
-            var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "theme.txt");
-            if (System.IO.File.Exists(p))
-            {
-                bool tr = System.IO.File.ReadAllText(p).Trim() == "transparent";
-                TransparentModeCheck.IsChecked = tr;
-                ApplyTransparentTheme(tr);
-            }
-            else
-            {
-                // varsayılan düşük opaklık (screenshot gibi)
-                ApplyTransparentTheme(true);
-            }
+            _theme.Load();
+            _theme.ApplyTo(this);
+            // eski transparent checkbox ile uyum: Graphite≈transparent, Midnight≈opaque
+            try { TransparentModeCheck.IsChecked = _theme.Current.Name != "Midnight"; } catch { }
         }
-        catch { }
+        catch { try { _theme.ApplyTo(this); } catch { } }
         LoadTimerPresets();
         // Hep üste: WPF Topmost + Win32 TOPMOST (masaüstüne tıklayınca gizlenmesin)
         Topmost = true;
@@ -802,10 +795,32 @@ public partial class IslandWindow : Window
     private void CloseControlCenter_Click(object sender, RoutedEventArgs e) => AnimateTo(IslandState.Compact);
     private void OpenControlCenter_Click(object sender, RoutedEventArgs e) => AnimateTo(IslandState.ControlCenter);
     private void Settings_Click(object sender, RoutedEventArgs e)
-        => System.Windows.MessageBox.Show("Ayarlar yakında: tema, başlangıçta çalıştır, hook tercihleri burada olacak.", "Notchless", MessageBoxButton.OK, MessageBoxImage.Information);
+    {
+        try
+        {
+            var sw = new SettingsWindow(this) { Owner = this };
+            sw.ShowDialog();
+            // dönüşte tema yeniden uygula (preview rollback vs)
+            _theme.Load();
+            _theme.ApplyTo(this);
+        }
+        catch { }
+    }
 
-    private void TransparentMode_Checked(object sender, RoutedEventArgs e) => ApplyTransparentTheme(true);
-    private void TransparentMode_Unchecked(object sender, RoutedEventArgs e) => ApplyTransparentTheme(false);
+    private void TransparentMode_Checked(object sender, RoutedEventArgs e)
+    {
+        _theme.SetTheme("Graphite");
+        _theme.Save();
+        _theme.ApplyTo(this);
+        ApplyTransparentTheme(true);
+    }
+    private void TransparentMode_Unchecked(object sender, RoutedEventArgs e)
+    {
+        _theme.SetTheme("Midnight");
+        _theme.Save();
+        _theme.ApplyTo(this);
+        ApplyTransparentTheme(false);
+    }
     private void ApplyTransparentTheme(bool lowOpacity)
     {
         try

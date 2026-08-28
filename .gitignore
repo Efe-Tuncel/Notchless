@@ -3,3 +3,7 @@ obj/
 *.user
 .vs/
 *.zip
+.agents/
+.opencode/
+.claude/
+skills-lock.json

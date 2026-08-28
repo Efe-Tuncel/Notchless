@@ -38,14 +38,16 @@ public sealed class FullscreenService : IDisposable
                 var sb = new System.Text.StringBuilder(256);
                 NativeMethods.GetClassName(fg, sb, sb.Capacity);
                 string cls = sb.ToString();
-                if (cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd")
+                if (cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd"
+                    || cls == "SHELLDLL_DefView" || cls == "SysListView32")
                 { Show(); return; }
-                // Explorer desktop'ı filtrele
+                // Explorer'ın herhangi bir penceresi tam ekran sansın istenmiyor — masaüstü ikon alanı da explorer process'i
+                // File Explorer'ın kendisi WorkingArea boyutunda olduğu için zaten Bounds ile eşleşmez, bu yüzden güvenli
                 NativeMethods.GetWindowThreadProcessId(fg, out uint pid);
                 try
                 {
                     using var p = System.Diagnostics.Process.GetProcessById((int)pid);
-                    if (p.ProcessName.Equals("explorer", StringComparison.OrdinalIgnoreCase) && (cls == "Progman" || cls == "WorkerW"))
+                    if (p.ProcessName.Equals("explorer", StringComparison.OrdinalIgnoreCase))
                     { Show(); return; }
                 }
                 catch { }

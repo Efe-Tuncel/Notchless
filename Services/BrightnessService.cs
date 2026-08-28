@@ -7,6 +7,7 @@ namespace Notchless.Services;
 public sealed class BrightnessService : IDisposable
 {
     private readonly DispatcherTimer _timer;
+    private readonly System.Windows.Threading.Dispatcher _dispatcher;
     private ManagementEventWatcher? _watcher;
     private ManagementObject? _brightnessObj;
     public event Action<int>? BrightnessChanged; // 0..100
@@ -16,44 +17,46 @@ public sealed class BrightnessService : IDisposable
 
     public BrightnessService()
     {
+        _dispatcher = System.Windows.Application.Current?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
         TryInitWmi();
-        TryInitEventWatcher(); // olay tabanlı — WMI __InstanceModificationEvent
+        TryInitEventWatcher();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _timer.Tick += (_, _) => Poll();
+        _timer.Tick += OnTimerTick;
         _timer.Start();
         Poll();
     }
+    private void OnTimerTick(object? s, EventArgs e) => Poll();
 
     private void TryInitEventWatcher()
     {
         try
         {
-            // Gerçek event dinleme: CurrentBrightness değişince tetiklenir
             var query = new WqlEventQuery("__InstanceModificationEvent", TimeSpan.FromSeconds(1),
                 "TargetInstance ISA 'WmiMonitorBrightness'");
             _watcher = new ManagementEventWatcher(@"root\WMI", query.QueryString);
-            _watcher.EventArrived += (_, e) =>
-            {
-                try
-                {
-                    var target = (ManagementBaseObject)e.NewEvent["TargetInstance"];
-                    var v = Convert.ToInt32(target["CurrentBrightness"]);
-                    if (v != Brightness)
-                    {
-                        Brightness = v;
-                        // watcher thread'i UI değil — dispatcher'a post etmeden direkt invoke, dinleyici Dispatcher'a alır
-                        BrightnessChanged?.Invoke(Brightness);
-                    }
-                }
-                catch { }
-            };
+            _watcher.EventArrived += OnWmiEvent;
             _watcher.Start();
         }
         catch
         {
-            // WMI event desteklenmezse polling fallback'i zaten var
             _watcher?.Dispose(); _watcher = null;
         }
+    }
+    private void OnWmiEvent(object sender, EventArrivedEventArgs e)
+    {
+        try
+        {
+            using var target = (ManagementBaseObject?)e.NewEvent["TargetInstance"];
+            if (target == null) return;
+            var v = Convert.ToInt32(target["CurrentBrightness"]);
+            if (v != Brightness)
+            {
+                Brightness = v;
+                if (_dispatcher.HasShutdownStarted) return;
+                _dispatcher.BeginInvoke(() => BrightnessChanged?.Invoke(Brightness));
+            }
+        }
+        catch { }
     }
 
     private void TryInitWmi()
@@ -61,23 +64,52 @@ public sealed class BrightnessService : IDisposable
         try
         {
             using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM WmiMonitorBrightness");
+            var coll = searcher.Get();
             bool found = false;
-            foreach (ManagementObject o in searcher.Get())
+            ManagementObject? keep = null;
+            foreach (ManagementObject o in coll)
             {
-                _brightnessObj = o;
-                found = true;
-                break;
+                if (!found)
+                {
+                    keep = o;
+                    found = true;
+                }
+                else
+                {
+                    o.Dispose();
+                }
             }
+            coll.Dispose();
             bool supported = found;
+            if (supported)
+            {
+                _brightnessObj?.Dispose();
+                _brightnessObj = keep;
+            }
+            else
+            {
+                keep?.Dispose();
+                _brightnessObj?.Dispose();
+                _brightnessObj = null;
+            }
             if (IsSupported != supported)
             {
                 IsSupported = supported;
-                AvailabilityChanged?.Invoke(IsSupported);
+                // marshal to UI thread
+                if (_dispatcher.CheckAccess()) AvailabilityChanged?.Invoke(IsSupported);
+                else _dispatcher.BeginInvoke(() => AvailabilityChanged?.Invoke(IsSupported));
             }
         }
         catch
         {
-            if (IsSupported) { IsSupported = false; AvailabilityChanged?.Invoke(false); }
+            _brightnessObj?.Dispose();
+            _brightnessObj = null;
+            if (IsSupported)
+            {
+                IsSupported = false;
+                if (_dispatcher.CheckAccess()) AvailabilityChanged?.Invoke(false);
+                else _dispatcher.BeginInvoke(() => AvailabilityChanged?.Invoke(false));
+            }
         }
     }
 
@@ -86,15 +118,19 @@ public sealed class BrightnessService : IDisposable
         try
         {
             if (_brightnessObj == null) { TryInitWmi(); if (_brightnessObj == null) return; }
-            // Need fresh query each time because CurrentBrightness may change
             using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
-            foreach (ManagementObject o in searcher.Get())
+            using var coll = searcher.Get();
+            foreach (ManagementObject o in coll)
             {
-                var v = Convert.ToInt32(o["CurrentBrightness"]);
-                if (v != Brightness)
+                using (o)
                 {
-                    Brightness = v;
-                    BrightnessChanged?.Invoke(Brightness);
+                    var v = Convert.ToInt32(o["CurrentBrightness"]);
+                    if (v != Brightness)
+                    {
+                        Brightness = v;
+                        if (_dispatcher.CheckAccess()) BrightnessChanged?.Invoke(Brightness);
+                        else _dispatcher.BeginInvoke(() => BrightnessChanged?.Invoke(Brightness));
+                    }
                 }
                 break;
             }
@@ -108,23 +144,32 @@ public sealed class BrightnessService : IDisposable
         try
         {
             using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
-            foreach (ManagementObject o in searcher.Get())
+            using var coll = searcher.Get();
+            foreach (ManagementObject o in coll)
             {
-                // Timeout param = 0 or 1
-                o.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)level });
+                using (o)
+                {
+                    o.InvokeMethod("WmiSetBrightness", new object[] { (uint)0, (byte)level });
+                }
                 break;
             }
             Brightness = level;
-            BrightnessChanged?.Invoke(Brightness);
+            if (_dispatcher.CheckAccess()) BrightnessChanged?.Invoke(Brightness);
+            else _dispatcher.BeginInvoke(() => BrightnessChanged?.Invoke(Brightness));
         }
         catch { }
     }
 
     public void Dispose()
     {
+        _timer.Tick -= OnTimerTick;
         _timer.Stop();
-        try { _watcher?.Stop(); } catch { }
-        _watcher?.Dispose();
-        _brightnessObj?.Dispose();
+        if (_watcher != null)
+        {
+            try { _watcher.EventArrived -= OnWmiEvent; } catch { }
+            try { _watcher.Stop(); } catch { }
+            _watcher.Dispose(); _watcher = null;
+        }
+        _brightnessObj?.Dispose(); _brightnessObj = null;
     }
 }

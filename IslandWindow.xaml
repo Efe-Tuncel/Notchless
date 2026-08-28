@@ -287,7 +287,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <TextBlock Text="Notchless — Kontrol Merkezi" Foreground="#AAAAAA" FontSize="10" Margin="0,0,0,8" FontFamily="Consolas" HorizontalAlignment="Center"/>
-                    <UniformGrid Grid.Row="1" Columns="3" Rows="2">
+                    <UniformGrid Grid.Row="1" Columns="3">
                         <Border x:Name="CCBatteryCard" Style="{StaticResource BentoCard}">
                             <StackPanel>
                                 <TextBlock Text="🔋 Pil" Foreground="#888" FontSize="9"/>

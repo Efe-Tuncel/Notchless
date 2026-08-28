@@ -202,9 +202,9 @@ public partial class IslandWindow : Window
         _source = HwndSource.FromHwnd(_hwnd);
         _source?.AddHook(WndProc);
 
-        // extended styles: TOPMOST | TOOLWINDOW
-        int ex = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
-        ex |= NativeMethods.WS_EX_TOOLWINDOW;
+        // extended styles: TOPMOST | TOOLWINDOW — x64 safe
+        var ex = NativeMethods.GetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE);
+        ex = new IntPtr(ex.ToInt64() | NativeMethods.WS_EX_TOOLWINDOW);
         NativeMethods.SetWindowLong(_hwnd, NativeMethods.GWL_EXSTYLE, ex);
         NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);

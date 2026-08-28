@@ -30,10 +30,16 @@ public sealed class DownloadWatcherService : IDisposable
             {
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.LastWrite,
                 IncludeSubdirectories = false,
-                EnableRaisingEvents = true
+                EnableRaisingEvents = true,
+                InternalBufferSize = 64 * 1024
             };
             _watcher.Created += OnChanged;
             _watcher.Changed += OnChanged;
+            _watcher.Error += (s, e) =>
+            {
+                // Buffer overflow — watcher'ı yeniden başlat
+                try { _watcher.EnableRaisingEvents = false; _watcher.EnableRaisingEvents = true; } catch { }
+            };
             // Deleted -> silme, tamamlandı değil (eski hatada Completed gösteriliyordu)
             _watcher.Deleted += (s, e) => { /* yoksay: silme != indirme bitti */ };
             _watcher.Renamed += (s, e) =>
@@ -75,5 +81,13 @@ public sealed class DownloadWatcherService : IDisposable
         return Directory.Exists(d) ? d : null;
     }
 
-    public void Dispose() { _watcher?.Dispose(); }
+    public void Dispose()
+    {
+        if (_watcher != null)
+        {
+            try { _watcher.EnableRaisingEvents = false; } catch { }
+            _watcher.Dispose();
+            _watcher = null;
+        }
+    }
 }

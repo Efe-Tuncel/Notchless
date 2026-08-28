@@ -16,28 +16,32 @@ public sealed class PowerService : IDisposable
     public bool IsBatterySaver { get; private set; }
     public bool HasBattery { get; private set; } = true;
 
+    private int _lastPercent = -1;
+    private bool _lastCharging, _lastSaver, _lastHasBattery;
+
     public PowerService()
     {
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-        _timer.Tick += (_, _) => Poll();
+        _timer.Tick += OnTick;
         Poll();
         _timer.Start();
     }
+    private void OnTick(object? s, EventArgs e) => Poll();
 
     private void Poll()
     {
         if (!NativeMethods.GetSystemPowerStatus(out var s)) return;
-        // Masaüstü: BatteryFlag=128, LifePercent=255 veya ACLineStatus=1 + NoSystemBattery
-        bool hasBattery = s.BatteryFlag != 128 && s.BatteryLifePercent != 255;
-        // Bazen masaüstünde BatteryFlag=128 gelmez ama 255 de pil yok demektir
-        if (s.BatteryFlag == 128) hasBattery = false;
-        HasBattery = hasBattery;
-        HasBatteryChanged?.Invoke(HasBattery);
+        bool hasBattery = (s.BatteryFlag & 128) == 0 && s.BatteryLifePercent != 255;
+        bool hasBatteryChanged = hasBattery != HasBattery;
+        if (hasBatteryChanged)
+        {
+            HasBattery = hasBattery;
+        }
 
         if (!hasBattery)
         {
             BatteryPercent = 100;
-            IsCharging = s.ACLineStatus == 1 || s.ACLineStatus == 255;
+            IsCharging = s.ACLineStatus == 1;
             IsBatterySaver = false;
         }
         else
@@ -46,8 +50,17 @@ public sealed class PowerService : IDisposable
             IsCharging = s.ACLineStatus == 1;
             IsBatterySaver = s.SystemStatusFlag == 1;
         }
-        PowerChanged?.Invoke(BatteryPercent, IsCharging, IsBatterySaver, HasBattery);
+        bool percentChanged = _lastPercent != BatteryPercent;
+        bool chargingChanged = _lastCharging != IsCharging;
+        bool saverChanged = _lastSaver != IsBatterySaver;
+        bool batteryPresenceChanged = _lastHasBattery != HasBattery;
+        if (percentChanged || chargingChanged || saverChanged || batteryPresenceChanged)
+        {
+            _lastPercent = BatteryPercent; _lastCharging = IsCharging; _lastSaver = IsBatterySaver; _lastHasBattery = HasBattery;
+            PowerChanged?.Invoke(BatteryPercent, IsCharging, IsBatterySaver, HasBattery);
+            if (batteryPresenceChanged) HasBatteryChanged?.Invoke(HasBattery);
+        }
     }
 
-    public void Dispose() => _timer.Stop();
+    public void Dispose() { _timer.Tick -= OnTick; _timer.Stop(); }
 }

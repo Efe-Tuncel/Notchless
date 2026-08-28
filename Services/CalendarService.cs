@@ -25,6 +25,7 @@ public sealed class CalendarService
         var all = new List<CalendarEvent>();
         try
         {
+            if (!Directory.Exists(_watchFolder)) return all;
             var icsFiles = Directory.GetFiles(_watchFolder, "*.ics");
             foreach (var f in icsFiles)
             {
@@ -35,27 +36,36 @@ public sealed class CalendarService
                     if (cal == null) continue;
                     foreach (var e in cal.Events)
                     {
-                        var start = e.DtStart?.AsSystemLocal ?? DateTime.MinValue;
-                        var end = e.DtEnd?.AsSystemLocal ?? start.AddHours(1);
-                        if (end < DateTime.Now) continue; // past
-                        // expand recurring roughly for next 7 days
-                        var occurrences = e.GetOccurrences(new CalDateTime(DateTime.Now), new CalDateTime(DateTime.Now.AddDays(7)));
-                        foreach (var occ in occurrences.Take(10))
+                        // Tekil ve tekrarlayan eventleri 7 günlük pencereye genişlet
+                        var from = new CalDateTime(DateTime.Now);
+                        var to = new CalDateTime(DateTime.Now.AddDays(7));
+                        var occurrences = e.GetOccurrences(from, to).Take(10).ToList();
+                        if (occurrences.Count > 0)
                         {
-                            var s = occ.Period.StartTime.AsSystemLocal;
-                            var ee = occ.Period.EndTime.AsSystemLocal;
-                            if (ee < DateTime.Now) continue;
-                            all.Add(new CalendarEvent(e.Summary ?? "(Başlıksız)", s, ee, e.Location ?? ""));
+                            foreach (var occ in occurrences)
+                            {
+                                var s = occ.Period.StartTime.AsSystemLocal;
+                                var ee = occ.Period.EndTime.AsSystemLocal;
+                                if (ee < DateTime.Now) continue;
+                                all.Add(new CalendarEvent(e.Summary ?? "(Başlıksız)", s, ee, e.Location ?? ""));
+                            }
                         }
-                        if (!occurrences.Any() && start >= DateTime.Now.AddDays(-1))
+                        else
+                        {
+                            var start = e.DtStart?.AsSystemLocal ?? DateTime.MinValue;
+                            var end = e.DtEnd?.AsSystemLocal ?? start.AddHours(1);
+                            if (end < DateTime.Now) continue;
+                            if (start < DateTime.Now.AddDays(-1)) continue;
                             all.Add(new CalendarEvent(e.Summary ?? "(Başlıksız)", start, end, e.Location ?? ""));
+                        }
                     }
                 }
                 catch { }
             }
         }
         catch { }
-        return all.OrderBy(x => x.Start).Take(max).ToList();
+        // Tarihe göre sırala ve tekrarları ayıkla (aynı başlık+start çakışması)
+        return all.OrderBy(x => x.Start).GroupBy(x => (x.Title, x.Start)).Select(g => g.First()).Take(max).ToList();
     }
 
     public record CalendarEvent(string Title, DateTime Start, DateTime End, string Location);

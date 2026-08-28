@@ -23,19 +23,23 @@ public sealed class MediaService : IDisposable
 
     public record MediaInfo(string Title, string Artist, string Album, BitmapImage? Thumbnail, TimeSpan Duration, bool IsPlaying);
 
+    private bool _disposed;
     public MediaService()
     {
         _dispatcher = Dispatcher.CurrentDispatcher;
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _progressTimer.Tick += (_, _) => PollProgress();
+        _progressTimer.Tick += OnProgressTick;
         _ = InitAsync();
     }
+    private void OnProgressTick(object? s, EventArgs e) => PollProgress();
 
     private async Task InitAsync()
     {
         try
         {
-            _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+            var mgr = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+            if (_disposed) return;
+            _manager = mgr;
             _manager.SessionsChanged += OnSessionsChanged;
             _manager.CurrentSessionChanged += OnCurrentSessionChanged;
             UpdateSession(_manager.GetCurrentSession());
@@ -44,10 +48,10 @@ public sealed class MediaService : IDisposable
     }
 
     private void OnSessionsChanged(GlobalSystemMediaTransportControlsSessionManager s, SessionsChangedEventArgs e) =>
-        _dispatcher.BeginInvoke(() => UpdateSession(s.GetCurrentSession()));
+        _ = _dispatcher.BeginInvoke(() => UpdateSession(s.GetCurrentSession()));
 
     private void OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager s, CurrentSessionChangedEventArgs e) =>
-        _dispatcher.BeginInvoke(() => UpdateSession(s.GetCurrentSession()));
+        _ = _dispatcher.BeginInvoke(() => UpdateSession(s.GetCurrentSession()));
 
     private void UpdateSession(GlobalSystemMediaTransportControlsSession? session)
     {
@@ -76,7 +80,7 @@ public sealed class MediaService : IDisposable
 
     private void OnPropsChanged(GlobalSystemMediaTransportControlsSession s, MediaPropertiesChangedEventArgs e) => _ = RefreshPropsAsync().ContinueWith(t => { if (t.IsFaulted) System.Diagnostics.Debug.WriteLine(t.Exception); }, TaskScheduler.Default);
     private void OnPlaybackChanged(GlobalSystemMediaTransportControlsSession s, PlaybackInfoChangedEventArgs e) => _ = RefreshPropsAsync().ContinueWith(t => { if (t.IsFaulted) System.Diagnostics.Debug.WriteLine(t.Exception); }, TaskScheduler.Default);
-    private void OnTimelineChanged(GlobalSystemMediaTransportControlsSession s, TimelinePropertiesChangedEventArgs e) => PollProgress();
+    private void OnTimelineChanged(GlobalSystemMediaTransportControlsSession s, TimelinePropertiesChangedEventArgs e) => _ = _dispatcher.BeginInvoke(() => PollProgress());
 
     private async Task RefreshPropsAsync()
     {
@@ -84,6 +88,7 @@ public sealed class MediaService : IDisposable
         try
         {
             var props = await _currentSession.TryGetMediaPropertiesAsync();
+            if (props == null) return;
             var playback = _currentSession.GetPlaybackInfo();
             var timeline = _currentSession.GetTimelineProperties();
             BitmapImage? thumb = null;
@@ -91,21 +96,28 @@ public sealed class MediaService : IDisposable
             {
                 try
                 {
-                    var stream = await props.Thumbnail.OpenReadAsync();
-                    using var ms = new MemoryStream();
-                    var dr = new DataReader(stream.GetInputStreamAt(0));
-                    await dr.LoadAsync((uint)stream.Size);
-                    var bytes = new byte[stream.Size];
-                    dr.ReadBytes(bytes);
-                    dr.DetachStream();
-                    thumb = new BitmapImage();
-                    thumb.BeginInit();
-                    thumb.StreamSource = new MemoryStream(bytes);
-                    thumb.CacheOption = BitmapCacheOption.OnLoad;
-                    thumb.EndInit();
-                    thumb.Freeze();
+                    using var stream = await props.Thumbnail.OpenReadAsync();
+                    if (stream.Size == 0 || stream.Size > 10_000_000) { /* too large */ }
+                    else
+                    {
+                        using var dr = new DataReader(stream.GetInputStreamAt(0));
+                        await dr.LoadAsync((uint)stream.Size);
+                        var bytes = new byte[stream.Size];
+                        dr.ReadBytes(bytes);
+                        dr.DetachStream();
+                        // BitmapImage oluşturmayı UI thread'de yap veya Freeze etmeden önce BeginInit/EndInit'i background'da dene
+                        // Freeze sonrası UI thread'e güvenli geçiş için Dispatcher kullan
+                        var tmp = new BitmapImage();
+                        tmp.BeginInit();
+                        tmp.StreamSource = new MemoryStream(bytes);
+                        tmp.CacheOption = BitmapCacheOption.OnLoad;
+                        tmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+                        tmp.EndInit();
+                        if (tmp.CanFreeze) tmp.Freeze();
+                        thumb = tmp;
+                    }
                 }
-                catch { }
+                catch { thumb = null; }
             }
             var isPlaying = playback?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
             var info = new MediaInfo(
@@ -116,7 +128,8 @@ public sealed class MediaService : IDisposable
                 timeline.EndTime - timeline.StartTime,
                 isPlaying);
             Current = info;
-            _dispatcher.BeginInvoke(() => MediaChanged?.Invoke(info));
+            if (_dispatcher.CheckAccess()) MediaChanged?.Invoke(info);
+            else _ = _dispatcher.BeginInvoke(() => MediaChanged?.Invoke(info));
         }
         catch { }
     }
@@ -127,7 +140,9 @@ public sealed class MediaService : IDisposable
         try
         {
             var t = _currentSession.GetTimelineProperties();
-            ProgressChanged?.Invoke(t.Position, t.EndTime - t.StartTime);
+            var pos = t.Position; var dur = t.EndTime - t.StartTime;
+            if (_dispatcher.CheckAccess()) ProgressChanged?.Invoke(pos, dur);
+            else _ = _dispatcher.BeginInvoke(() => ProgressChanged?.Invoke(pos, dur));
         }
         catch { }
     }
@@ -171,11 +186,21 @@ public sealed class MediaService : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
+        _progressTimer.Tick -= OnProgressTick;
         _progressTimer.Stop();
+        if (_currentSession != null)
+        {
+            try { _currentSession.MediaPropertiesChanged -= OnPropsChanged; } catch { }
+            try { _currentSession.PlaybackInfoChanged -= OnPlaybackChanged; } catch { }
+            try { _currentSession.TimelinePropertiesChanged -= OnTimelineChanged; } catch { }
+            _currentSession = null;
+        }
         if (_manager != null)
         {
             _manager.SessionsChanged -= OnSessionsChanged;
             _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
+            _manager = null;
         }
     }
 }

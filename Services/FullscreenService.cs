@@ -7,6 +7,7 @@ namespace Notchless.Services;
 /// <summary>
 /// Tam ekranda ada gizlenir (ShowWindow SW_HIDE), çıkınca geri gelir.
 /// GetForegroundWindow + pencere/ekran boyutu karşılaştırması.
+/// DPI-aware karşılaştırma için GetWindowRect fiziksel piksel kullanır, Screen.Bounds da fiziksel piksel olduğundan uyumludur.
 /// </summary>
 public sealed class FullscreenService : IDisposable
 {
@@ -26,6 +27,7 @@ public sealed class FullscreenService : IDisposable
     {
         try
         {
+            if (_hwnd == IntPtr.Zero) return;
             var fg = NativeMethods.GetForegroundWindow();
             if (fg == IntPtr.Zero || fg == _hwnd) { Show(); return; }
             if (!NativeMethods.GetWindowRect(fg, out var r)) { Show(); return; }
@@ -52,18 +54,52 @@ public sealed class FullscreenService : IDisposable
     private void Hide()
     {
         if (_isHidden) return;
-        NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
+        try
+        {
+            // WPF ile senkronize: Dispatcher üzerinden Visibility ayarla, ardından native Hide
+            if (System.Windows.Application.Current?.Dispatcher.CheckAccess() == true)
+            {
+                if (System.Windows.Application.Current.Windows.Count > 0)
+                {
+                    foreach (Window w in System.Windows.Application.Current.Windows)
+                    {
+                        if (new System.Windows.Interop.WindowInteropHelper(w).Handle == _hwnd)
+                        {
+                            w.Visibility = Visibility.Hidden;
+                            break;
+                        }
+                    }
+                }
+            }
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE);
+        }
+        catch { try { NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_HIDE); } catch { } }
         _isHidden = true;
     }
     private void Show()
     {
         if (!_isHidden) return;
-        NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
-        // Topmost'u koru
-        NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
-            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+        try
+        {
+            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW);
+            // WPF Visibility senkronizasyonu
+            if (System.Windows.Application.Current?.Dispatcher.CheckAccess() == true)
+            {
+                foreach (Window w in System.Windows.Application.Current.Windows)
+                {
+                    if (new System.Windows.Interop.WindowInteropHelper(w).Handle == _hwnd)
+                    {
+                        if (w.Visibility != Visibility.Visible) w.Visibility = Visibility.Visible;
+                        break;
+                    }
+                }
+            }
+            NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+        }
+        catch { try { NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_SHOW); } catch { } }
         _isHidden = false;
     }
 
-    public void Dispose() { _timer.Stop(); Show(); }
+    public void Dispose() { try { _timer.Stop(); } catch { } Show(); }
 }

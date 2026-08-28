@@ -18,64 +18,76 @@ public sealed class BluetoothBatteryService : IDisposable
 
     public event Action<IReadOnlyList<BtBattery>>? BatteriesChanged;
     private readonly System.Windows.Threading.DispatcherTimer _pollTimer;
+    private readonly System.Threading.SemaphoreSlim _gate = new(1,1);
+    private bool _disposed;
 
     public record BtBattery(string Name, int Percent, string DeviceId);
 
     public BluetoothBatteryService()
     {
         _pollTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-        _pollTimer.Tick += async (_, _) => await RefreshAsync();
+        _pollTimer.Tick += OnTick;
         _ = RefreshAsync();
         _pollTimer.Start();
     }
+    private async void OnTick(object? s, EventArgs e) { if (!await _gate.WaitAsync(0)) return; try { await RefreshAsyncCore(); } finally { _gate.Release(); } }
 
-    public async Task RefreshAsync()
+    public Task RefreshAsync() => RefreshAsyncCore();
+    private async Task RefreshAsyncCore()
     {
+        if (_disposed) return;
         var list = new List<BtBattery>();
         try
         {
-            // Eşleşmiş Bluetooth cihazlarını bul
             var selector = BluetoothLEDevice.GetDeviceSelectorFromPairingState(true);
             var devices = await DeviceInformation.FindAllAsync(selector);
             foreach (var di in devices)
             {
+                BluetoothLEDevice? bt = null;
                 try
                 {
-                    var bt = await BluetoothLEDevice.FromIdAsync(di.Id);
+                    bt = await BluetoothLEDevice.FromIdAsync(di.Id);
                     if (bt == null) continue;
                     var services = await bt.GetGattServicesAsync();
-                    if (services.Status != GattCommunicationStatus.Success) { bt.Dispose(); continue; }
+                    if (services.Status != GattCommunicationStatus.Success) continue;
                     foreach (var svc in services.Services)
                     {
-                        if (svc.Uuid != BatteryServiceUuid) { svc.Dispose(); continue; }
-                        var chars = await svc.GetCharacteristicsAsync();
-                        if (chars.Status != GattCommunicationStatus.Success) { svc.Dispose(); continue; }
-                        foreach (var ch in chars.Characteristics)
+                        using (svc)
                         {
-                            if (ch.Uuid != BatteryLevelUuid) continue;
-                            var read = await ch.ReadValueAsync();
-                            if (read.Status == GattCommunicationStatus.Success)
+                            if (svc.Uuid != BatteryServiceUuid) continue;
+                            var chars = await svc.GetCharacteristicsAsync(Windows.Devices.Bluetooth.BluetoothCacheMode.Uncached);
+                            if (chars.Status != GattCommunicationStatus.Success) continue;
+                            foreach (var ch in chars.Characteristics)
                             {
-                                var reader = Windows.Storage.Streams.DataReader.FromBuffer(read.Value);
-                                byte lvl = reader.ReadByte();
-                                list.Add(new BtBattery(bt.Name ?? di.Name, lvl, di.Id));
+                                if (ch.Uuid != BatteryLevelUuid) continue;
+                                var read = await ch.ReadValueAsync(Windows.Devices.Bluetooth.BluetoothCacheMode.Uncached);
+                                if (read.Status == GattCommunicationStatus.Success)
+                                {
+                                    using var reader = Windows.Storage.Streams.DataReader.FromBuffer(read.Value);
+                                    byte lvl = reader.ReadByte();
+                                    list.Add(new BtBattery(bt.Name ?? di.Name, lvl, di.Id));
+                                }
+                                break;
                             }
-                            break;
+                            // GattCharacteristicsResult karakterleri zaten dispose edildi; servis using ile dispose olacak
                         }
-                        svc.Dispose();
                     }
-                    // Gatt characteristic/service dispose sonrası LE device dispose
-                    bt.Dispose();
                 }
                 catch { }
+                finally { try { bt?.Dispose(); } catch { } }
             }
         }
         catch { }
-        BatteriesChanged?.Invoke(list);
+        if (_disposed) return;
+        // UI'ye marshal gerekebilir ama hafif — direkt invoke
+        try { BatteriesChanged?.Invoke(list); } catch { }
     }
 
     public void Dispose()
     {
+        _disposed = true;
+        _pollTimer.Tick -= OnTick;
         _pollTimer.Stop();
+        _gate.Dispose();
     }
 }

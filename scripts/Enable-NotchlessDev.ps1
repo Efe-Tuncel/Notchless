@@ -1,8 +1,13 @@
 # Notchless - Dev makine için Smart App Control / Defender dışlama (one-time, free)
 # Kullanım: PowerShell'i YÖNETİCİ olarak aç -> .\scripts\Enable-NotchlessDev.ps1
 param(
-  [string]$Path = "C:\Users\efetu\Desktop\Notchless"
+  [string]$Path = ""
 )
+if ([string]::IsNullOrWhiteSpace($Path)) {
+  # Script'in bulunduğu klasörden proje kökünü bul
+  $Path = Split-Path -Parent $PSScriptRoot
+  if ([string]::IsNullOrWhiteSpace($Path)) { $Path = "C:\Users\efetu\Desktop\Notchless" }
+}
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   Write-Host ">> Lutfen PowerShell'i YONETICI olarak ac ve tekrar dene." -ForegroundColor Yellow
   Write-Host "   Baslat -> PowerShell -> Sag tik -> Yonetici olarak calistir" -ForegroundColor Yellow

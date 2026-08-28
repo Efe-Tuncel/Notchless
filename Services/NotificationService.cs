@@ -50,8 +50,16 @@ public class NotificationService : IDisposable
             Log($"RequestAccessAsync result: {Status}");
             if (IsSupported)
             {
-                _listener.NotificationChanged += OnNotificationChanged;
-                // Polling yedek — bazı unpackaged senaryolarda NotificationChanged tetiklenmiyor
+                try
+                {
+                    _listener.NotificationChanged += OnNotificationChanged;
+                    Log("NotificationChanged subscribed");
+                }
+                catch (Exception ex)
+                {
+                    Log($"Subscribe failed (unpackaged 0x80070490 expected): {ex.Message} — polling+UIA fallback kullanılacak");
+                }
+                // Polling yedek — unpackaged'de event çalışmaz ama GetNotificationsAsync yine çalışabilir
                 _seen.Clear();
                 try
                 {
@@ -61,7 +69,9 @@ public class NotificationService : IDisposable
                 }
                 catch (Exception ex) { Log($"Seed failed: {ex.Message}"); }
                 _pollTimer = new System.Threading.Timer(async _ => await PollAsync(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
-                Log($"Listener enabled + polling started");
+                Log($"Listener polling started (2s)");
+                // Unpackaged'de GetNotificationsAsync da zaman zaman yetkisiz kalıyor — UIA'yı her zaman yedek olarak başlat
+                StartUIAFallback();
             }
             else
             {
@@ -98,25 +108,62 @@ public class NotificationService : IDisposable
         {
             var root = AutomationElement.RootElement;
             if (root == null) return;
-            // Toast pencereleri genellikle "Windows.UI.Notifications.ToastWindow" class'ı ile gelir
-            var cond = new PropertyCondition(AutomationElement.ClassNameProperty, "Windows.UI.Notifications.ToastWindow");
-            var toasts = root.FindAll(TreeScope.Children, cond);
-            foreach (AutomationElement el in toasts)
+
+            // Unpackaged fallback — sadece gerçek toast host'larını tara, genel pencereleri değil.
+            // Windows 11'de toast'lar ShellExperienceHost.exe içinde, class whitelist ile geliyor.
+            // Eski kodda ControlType.Window fallback tüm pencereleri (CabinetWClass, Chrome_WidgetWin_1) "bildirim" sanıyordu — düzeltildi.
+            var whitelist = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Windows.UI.Notifications.ToastWindow",
+                "Windows.UI.Core.CoreWindow",
+                "XamlExplorerHostIslandWindow"
+            };
+
+            // Tüm top-level Window'ları al, sonra process + class ile filtrele
+            var winCond = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window);
+            var allWins = root.FindAll(TreeScope.Children, winCond);
+            foreach (AutomationElement el in allWins)
             {
                 try
                 {
+                    string className = el.Current.ClassName ?? "";
+                    if (!whitelist.Contains(className)) continue;
+
+                    // Process filtre — sadece ShellExperienceHost (Win11) / explorer host edenler, Chrome/Explorer'ı ele
+                    int pid = 0;
+                    try { pid = el.Current.ProcessId; } catch { continue; }
+                    string procName = "";
+                    try { using var p = System.Diagnostics.Process.GetProcessById(pid); procName = p.ProcessName; } catch { continue; }
+                    bool isHost = procName.Equals("ShellExperienceHost", StringComparison.OrdinalIgnoreCase)
+                               || procName.Equals("explorer", StringComparison.OrdinalIgnoreCase);
+                    if (!isHost) continue;
+
+                    // Boyut heuristiği — toast'lar küçük ve sağ-alt köşede, tam ekran pencere değil
+                    try
+                    {
+                        var rect = el.Current.BoundingRectangle;
+                        if (rect.Width > 600 || rect.Height > 250 || rect.Width < 200 || rect.Height < 40) continue;
+                        // Ekran sağ-alt kontrolü (opsiyonel, fazla kısıtlamamak için sadece çok büyükleri eledik)
+                    }
+                    catch { }
+
                     string name = el.Current.Name ?? "";
                     if (string.IsNullOrWhiteSpace(name)) continue;
-                    string hash = name.GetHashCode().ToString() + el.Current.AutomationId;
+                    // Name genellikle "AppName\nTitle\nBody" formatında — CabinetWClass gibi tek kelimelikleri ele
+                    if (!name.Contains("\n") && !name.Contains("\r")) continue;
+                    if (name.Contains("Notchless", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    string hash = $"{name}|{el.Current.AutomationId}|{className}";
                     if (hash == _lastToastHash) continue;
                     _lastToastHash = hash;
-                    // Name genellikle "AppName\nTitle\nBody" formatında
+
                     var parts = name.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
                     string appName = parts.Length > 0 ? parts[0] : "Bildirim";
                     string title = parts.Length > 1 ? parts[1] : name;
                     string body = parts.Length > 2 ? string.Join(" ", parts.Skip(2)) : "";
                     if (title.Length > 80) { body = title.Substring(80); title = title.Substring(0, 80); }
-                    Log($"UIA found: {appName} | {title}");
+                    if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body)) continue;
+                    Log($"UIA found: {appName} | {title} [{className}/{procName}]");
                     var info = new NotificationInfo { AppName = appName, Title = title, Text = body };
                     NotificationReceived?.Invoke(info);
                     break; // bir tane yeterli, diğer tick'te yenisi
@@ -189,7 +236,7 @@ public class NotificationService : IDisposable
 
     public void Disable()
     {
-        if (_listener != null) _listener.NotificationChanged -= OnNotificationChanged;
+        try { if (_listener != null) _listener.NotificationChanged -= OnNotificationChanged; } catch { }
         _pollTimer?.Dispose(); _pollTimer = null;
         _uiaTimer?.Dispose(); _uiaTimer = null;
         IsSupported = false;

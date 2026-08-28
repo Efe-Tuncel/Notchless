@@ -7,17 +7,20 @@ namespace Notchless.Services;
 public sealed class AudioService : IDisposable
 {
     private MMDevice? _device;
+    private MMDeviceEnumerator? _enumerator;
     private readonly DispatcherTimer _pollTimer;
+    private readonly System.Windows.Threading.Dispatcher _dispatcher;
     public event Action<float, bool>? VolumeChanged; // 0..1, muted
     public float Volume { get; private set; }
     public bool IsMuted { get; private set; }
 
     public AudioService()
     {
+        _dispatcher = System.Windows.Application.Current?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
         try
         {
-            var enumerator = new MMDeviceEnumerator();
-            _device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            _enumerator = new MMDeviceEnumerator();
+            _device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
             _device.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification;
             Volume = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
             IsMuted = _device.AudioEndpointVolume.Mute;
@@ -25,7 +28,7 @@ public sealed class AudioService : IDisposable
         catch { /* no audio device */ }
 
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _pollTimer.Tick += (_, _) => PollFallback();
+        _pollTimer.Tick += PollFallback;
         _pollTimer.Start();
     }
 
@@ -33,46 +36,69 @@ public sealed class AudioService : IDisposable
     {
         Volume = data.MasterVolume;
         IsMuted = data.Muted;
-        // Marshal to UI thread via Dispatcher if needed by caller; event is already on COM thread, use App dispatcher
-        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => VolumeChanged?.Invoke(Volume, IsMuted));
+        if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished) return;
+        _ = _dispatcher.BeginInvoke(() => VolumeChanged?.Invoke(Volume, IsMuted));
     }
 
-    private void PollFallback()
+    private void PollFallback(object? s, EventArgs e)
     {
-        if (_device == null) return;
         try
         {
-            var v = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
-            var m = _device.AudioEndpointVolume.Mute;
+            if (_device == null)
+            {
+                // varsayılan cihaz değişmiş olabilir — yeniden dene
+                try
+                {
+                    _enumerator ??= new MMDeviceEnumerator();
+                    _device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                    _device.AudioEndpointVolume.OnVolumeNotification += OnVolumeNotification;
+                    Volume = _device.AudioEndpointVolume.MasterVolumeLevelScalar;
+                    IsMuted = _device.AudioEndpointVolume.Mute;
+                    VolumeChanged?.Invoke(Volume, IsMuted);
+                }
+                catch { return; }
+                return;
+            }
+            var dev = _device;
+            if (dev == null) return;
+            var v = dev.AudioEndpointVolume.MasterVolumeLevelScalar;
+            var m = dev.AudioEndpointVolume.Mute;
             if (Math.Abs(v - Volume) > 0.001f || m != IsMuted)
             {
                 Volume = v; IsMuted = m;
                 VolumeChanged?.Invoke(Volume, IsMuted);
             }
         }
-        catch { }
+        catch
+        {
+            // cihaz kayboldu — temizle, sonraki poll'de yeniden oluştur
+            try { if (_device != null) _device.AudioEndpointVolume.OnVolumeNotification -= OnVolumeNotification; } catch { }
+            try { _device?.Dispose(); } catch { }
+            _device = null;
+        }
     }
 
     public void SetVolume(float v)
     {
         if (_device == null) return;
-        v = Math.Clamp(v, 0f, 1f);
-        _device.AudioEndpointVolume.MasterVolumeLevelScalar = v;
+        try { v = Math.Clamp(v, 0f, 1f); _device.AudioEndpointVolume.MasterVolumeLevelScalar = v; } catch { }
     }
 
     public void SetMute(bool mute)
     {
         if (_device == null) return;
-        _device.AudioEndpointVolume.Mute = mute;
+        try { _device.AudioEndpointVolume.Mute = mute; } catch { }
     }
 
     public void Dispose()
     {
+        _pollTimer.Tick -= PollFallback;
         _pollTimer.Stop();
         if (_device != null)
         {
-            _device.AudioEndpointVolume.OnVolumeNotification -= OnVolumeNotification;
-            _device.Dispose();
+            try { _device.AudioEndpointVolume.OnVolumeNotification -= OnVolumeNotification; } catch { }
+            _device.Dispose(); _device = null;
         }
+        _enumerator?.Dispose(); _enumerator = null;
     }
 }

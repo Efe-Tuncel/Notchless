@@ -1,7 +1,11 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using System.Windows.Automation;
+using System.Windows.Media.Imaging;
+using Windows.Storage.Streams;
 using Windows.UI.Notifications;
 using Windows.UI.Notifications.Management;
 
@@ -12,6 +16,7 @@ public class NotificationInfo
     public string AppName { get; set; } = "";
     public string Title { get; set; } = "";
     public string Text { get; set; } = "";
+    public BitmapImage? AppIcon { get; set; }
 }
 
 public class NotificationService : IDisposable
@@ -36,6 +41,31 @@ public class NotificationService : IDisposable
             System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "startup.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [Notif] {msg}\n");
         }
         catch { }
+    }
+
+    private static async Task<BitmapImage?> TryGetAppLogoAsync(Windows.ApplicationModel.AppInfo appInfo)
+    {
+        try
+        {
+            var logoRef = appInfo.DisplayInfo.GetLogo(new Windows.Foundation.Size(44, 44));
+            if (logoRef == null) return null;
+            using var stream = await logoRef.OpenReadAsync();
+            if (stream.Size == 0 || stream.Size > 5_000_000) return null;
+            using var dr = new DataReader(stream.GetInputStreamAt(0));
+            await dr.LoadAsync((uint)stream.Size);
+            var bytes = new byte[stream.Size];
+            dr.ReadBytes(bytes);
+            dr.DetachStream();
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.DecodePixelWidth = 34;
+            bmp.EndInit();
+            if (bmp.CanFreeze) bmp.Freeze();
+            return bmp;
+        }
+        catch { return null; }
     }
 
     public async Task<bool> TryEnableAsync()
@@ -195,7 +225,8 @@ public class NotificationService : IDisposable
                     string title = texts.Count > 0 ? texts[0].Text ?? "" : "";
                     string body = texts.Count > 1 ? string.Join(" ", texts.Skip(1).Select(t => t.Text)) : "";
                     if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body)) continue;
-                    var info = new NotificationInfo { AppName = appName, Title = title, Text = body };
+                    var icon = await TryGetAppLogoAsync(n.AppInfo);
+                    var info = new NotificationInfo { AppName = appName, Title = title, Text = body, AppIcon = icon };
                     Log($"Poll found: {appName} | {title}");
                     NotificationReceived?.Invoke(info);
                 }
@@ -207,7 +238,7 @@ public class NotificationService : IDisposable
         catch (Exception ex) { Log($"PollAsync err: {ex.Message}"); }
     }
 
-    private void OnNotificationChanged(UserNotificationListener sender, UserNotificationChangedEventArgs args)
+    private async void OnNotificationChanged(UserNotificationListener sender, UserNotificationChangedEventArgs args)
     {
         try
         {
@@ -228,7 +259,8 @@ public class NotificationService : IDisposable
 
             if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body)) return;
 
-            var info = new NotificationInfo { AppName = appName, Title = title, Text = body };
+            var icon = await TryGetAppLogoAsync(notif.AppInfo);
+            var info = new NotificationInfo { AppName = appName, Title = title, Text = body, AppIcon = icon };
             NotificationReceived?.Invoke(info);
         }
         catch { }

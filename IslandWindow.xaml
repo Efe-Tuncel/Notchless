@@ -110,14 +110,14 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Bento düşük opaklık — %85 -->
+        <!-- Bento — 3. görsel tarzı, daha yuvarlak ve ferah -->
         <Style x:Key="BentoCard" TargetType="Border">
-            <Setter Property="Background" Value="#E6111113"/>
-            <Setter Property="BorderBrush" Value="#1AFFFFFF"/>
+            <Setter Property="Background" Value="#E618181C"/>
+            <Setter Property="BorderBrush" Value="#1EFFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="16"/>
-            <Setter Property="Padding" Value="14"/>
-            <Setter Property="Margin" Value="5"/>
+            <Setter Property="CornerRadius" Value="20"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="6"/>
         </Style>
         <Style x:Key="PillBtn" TargetType="Button" BasedOn="{StaticResource IconBtn}">
             <Setter Property="Background" Value="#1A1A1E"/>
@@ -141,23 +141,6 @@
     </Window.Resources>
 
     <Grid x:Name="RootGrid" Background="Transparent">
-        <!-- Aura — ada merkezinden etrafa saçılan Windows Fluent glow (ekranın hepsine değil, ada etrafına) -->
-        <Border x:Name="FullscreenAura" Width="{Binding Width, ElementName=IslandBorder}" Height="{Binding Height, ElementName=IslandBorder}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,8,0,0" CornerRadius="20" Opacity="0" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
-            <Border.RenderTransform>
-                <ScaleTransform x:Name="AuraScale" ScaleX="0.82" ScaleY="0.82"/>
-            </Border.RenderTransform>
-            <Border.BorderBrush>
-                <LinearGradientBrush x:Name="AuraGradient" StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#FF0078D4" Offset="0"/>
-                    <GradientStop Color="#FF5B8DEF" Offset="0.33"/>
-                    <GradientStop Color="#FF50E6A0" Offset="0.66"/>
-                    <GradientStop Color="#FF00B7C3" Offset="1"/>
-                </LinearGradientBrush>
-            </Border.BorderBrush>
-            <Border.Effect>
-                <BlurEffect x:Name="AuraBlur" Radius="24"/>
-            </Border.Effect>
-        </Border>
         <!-- Island capsule -->
         <Border x:Name="IslandBorder"
                 HorizontalAlignment="Center" VerticalAlignment="Top"
@@ -165,6 +148,9 @@
                 Width="128" Height="36" CornerRadius="18"
                 Background="{StaticResource IslandGradient}"
                 BorderBrush="#22FFFFFF" BorderThickness="1">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="IslandShake" X="0"/>
+            </Border.RenderTransform>
             <Border.Effect>
                 <DropShadowEffect Color="Black" Opacity="0.6" BlurRadius="20" ShadowDepth="4"/>
             </Border.Effect>
@@ -175,8 +161,14 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Border Width="34" Height="34" CornerRadius="8" Background="#0078D4" VerticalAlignment="Center">
-                        <TextBlock Text="◧" Foreground="White" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <Border Width="34" Height="34" CornerRadius="8" Background="#1E1E20" VerticalAlignment="Center">
+                        <Grid>
+                            <Image x:Name="NotifAppIcon" Stretch="UniformToFill" Visibility="Collapsed"/>
+                            <TextBlock x:Name="NotifIconFallback" Text="◧" Foreground="White" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Border.Clip>
+                            <RectangleGeometry Rect="0,0,34,34" RadiusX="8" RadiusY="8"/>
+                        </Border.Clip>
                     </Border>
                     <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                         <TextBlock x:Name="NotifAppText" Text="WhatsApp" Foreground="#9ECAFF" FontSize="9" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
@@ -370,23 +362,16 @@
                                 </CheckBox>
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource BentoCard}">
-                            <StackPanel>
-                                <TextBlock Text="✨ Aura" Foreground="#888" FontSize="10"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="Hafif" Foreground="#666" FontSize="8" VerticalAlignment="Center"/>
-                                    <Slider x:Name="AuraIntensitySlider" Minimum="1" Maximum="3" Value="3" Width="70" Margin="6,0" IsMoveToPointEnabled="True" ValueChanged="AuraIntensity_Changed" SmallChange="1" TickFrequency="1" IsSnapToTickEnabled="True"/>
-                                    <TextBlock Text="Ağır" Foreground="#9ECAFF" FontSize="8" VerticalAlignment="Center"/>
-                                </StackPanel>
-                                <TextBlock x:Name="AuraValueText" Text="Yoğun: 3x" Foreground="#9ECAFF" FontSize="9" Margin="0,6,0,0" HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
                     </UniformGrid>
-                    <!-- Bottom bar -->
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0" VerticalAlignment="Center">
-                        <Button Content="⚙ Ayarlar" Style="{StaticResource PillBtn}" FontSize="11" Margin="4,0" Click="Settings_Click"/>
-                        <Button Content="✕ Kapat" Style="{StaticResource PillBtn}" FontSize="11" Margin="4,0" Click="CloseControlCenter_Click"/>
-                    </StackPanel>
+                    <!-- Bottom bar - Grid ile sabit, atlamayı önler -->
+                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="⚙ Ayarlar" Style="{StaticResource PillBtn}" FontSize="11" Margin="0,0,6,0" HorizontalAlignment="Stretch" MinWidth="120" Click="Settings_Click"/>
+                        <Button Grid.Column="1" Content="✕ Kapat" Style="{StaticResource PillBtn}" FontSize="11" Margin="6,0,0,0" HorizontalAlignment="Stretch" MinWidth="120" Click="CloseControlCenter_Click"/>
+                    </Grid>
                 </Grid>
             </Grid>
         </Border>

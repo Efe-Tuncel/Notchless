@@ -42,16 +42,35 @@ public sealed class MediaService : IDisposable
             _manager = mgr;
             _manager.SessionsChanged += OnSessionsChanged;
             _manager.CurrentSessionChanged += OnCurrentSessionChanged;
-            UpdateSession(_manager.GetCurrentSession());
+            UpdateSession(PickBestSession(_manager));
         }
         catch { }
     }
 
     private void OnSessionsChanged(GlobalSystemMediaTransportControlsSessionManager s, SessionsChangedEventArgs e) =>
-        _ = _dispatcher.BeginInvoke(() => UpdateSession(s.GetCurrentSession()));
+        _ = _dispatcher.BeginInvoke(() => UpdateSession(PickBestSession(s)));
 
     private void OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager s, CurrentSessionChangedEventArgs e) =>
-        _ = _dispatcher.BeginInvoke(() => UpdateSession(s.GetCurrentSession()));
+        _ = _dispatcher.BeginInvoke(() => UpdateSession(PickBestSession(s)));
+
+    private GlobalSystemMediaTransportControlsSession? PickBestSession(GlobalSystemMediaTransportControlsSessionManager? mgr = null)
+    {
+        try
+        {
+            var m = mgr ?? _manager;
+            if (m == null) return null;
+            var sessions = m.GetSessions();
+            // Önce Playing olan, özellikle chrome
+            foreach (var s in sessions)
+            {
+                try { if (s.GetPlaybackInfo()?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing) return s; } catch { }
+            }
+            // Yoksa ilk session
+            if (sessions.Count > 0) return sessions[0];
+            return m.GetCurrentSession();
+        }
+        catch { return _manager?.GetCurrentSession(); }
+    }
 
     private void UpdateSession(GlobalSystemMediaTransportControlsSession? session)
     {
@@ -105,19 +124,22 @@ public sealed class MediaService : IDisposable
                         var bytes = new byte[stream.Size];
                         dr.ReadBytes(bytes);
                         dr.DetachStream();
-                        // BitmapImage oluşturmayı UI thread'de yap veya Freeze etmeden önce BeginInit/EndInit'i background'da dene
-                        // Freeze sonrası UI thread'e güvenli geçiş için Dispatcher kullan
                         var tmp = new BitmapImage();
                         tmp.BeginInit();
                         tmp.StreamSource = new MemoryStream(bytes);
                         tmp.CacheOption = BitmapCacheOption.OnLoad;
                         tmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+                        tmp.DecodePixelWidth = 88;
                         tmp.EndInit();
                         if (tmp.CanFreeze) tmp.Freeze();
                         thumb = tmp;
                     }
                 }
                 catch { thumb = null; }
+            }
+            else
+            {
+                try { System.Diagnostics.Debug.WriteLine($"[Media] Thumbnail null for '{props.Title}' session={_currentSession.SourceAppUserModelId}"); } catch { }
             }
             var isPlaying = playback?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
             var info = new MediaInfo(

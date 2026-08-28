@@ -42,8 +42,6 @@ public partial class IslandWindow : Window
     private TimeSpan _remaining = TimeSpan.Zero;
     private bool _timerRunning;
     private DispatcherTimer? _activeAnimTimer;
-    private DispatcherTimer? _auraTimer;
-    private double _auraPhase;
 
     // animation targets — CC genişletildi (Pil/Zaman sığması için 440)
     private static readonly (double w, double h, double r) CompactSize = (128, 36, 18);
@@ -232,7 +230,6 @@ public partial class IslandWindow : Window
         }
         catch { }
         LoadTimerPresets();
-        LoadAuraIntensity();
         // Hep üste: WPF Topmost + Win32 TOPMOST (masaüstüne tıklayınca gizlenmesin)
         Topmost = true;
         var topmostTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -277,7 +274,7 @@ public partial class IslandWindow : Window
         _notif.Dispose();
         _dlWatcher?.Dispose(); _fullscreen?.Dispose();
         _clockTimer.Stop(); _camMicTimer.Stop(); _hudTimer.Stop();
-        _countdownTimer?.Stop(); _notifHideTimer?.Stop(); _auraTimer?.Stop(); _activeAnimTimer?.Stop();
+        _countdownTimer?.Stop(); _notifHideTimer?.Stop(); _activeAnimTimer?.Stop();
     }
 
     private void OnDisplayChanged(object? s, EventArgs e) => Dispatcher.BeginInvoke(PositionOnPrimary);
@@ -393,35 +390,22 @@ public partial class IslandWindow : Window
             }
             IslandBorder.BorderThickness = new Thickness(1);
         }
-        // Fullscreen aura — ekran ortasından etrafa saçılan (scale 0.82→1) Windows glow
+        // Bildirimde sadece çerçeve sallansın (aura kaldırıldı)
         if (isNotif)
         {
-            FullscreenAura.BeginAnimation(OpacityProperty, new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(380))));
-            var easeOut = new CubicEase { EasingMode = EasingMode.EaseOut };
-            AuraScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(520))) { EasingFunction = easeOut });
-            AuraScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(520))) { EasingFunction = easeOut });
-            if (_auraTimer == null)
-            {
-                _auraTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-                _auraTimer.Tick += (_, _) =>
-                {
-                    _auraPhase += 0.02;
-                    if (_auraPhase > 1) _auraPhase -= 1;
-                    double s = Math.Sin(_auraPhase * Math.PI * 2) * 0.25 + 0.5;
-                    AuraGradient.StartPoint = new WPoint(s, 0);
-                    AuraGradient.EndPoint = new WPoint(1 - s, 1);
-                    UpdateRegionForState(_state);
-                };
-            }
-            _auraTimer.Start();
+            var shake = new DoubleAnimationUsingKeyFrames();
+            shake.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+            shake.KeyFrames.Add(new LinearDoubleKeyFrame(-6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(40))));
+            shake.KeyFrames.Add(new LinearDoubleKeyFrame(6, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(90))));
+            shake.KeyFrames.Add(new LinearDoubleKeyFrame(-4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(140))));
+            shake.KeyFrames.Add(new LinearDoubleKeyFrame(4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190))));
+            shake.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(260))));
+            IslandShake.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, shake);
         }
         else
         {
-            FullscreenAura.BeginAnimation(OpacityProperty, new DoubleAnimation(0, new Duration(TimeSpan.FromMilliseconds(320))));
-            var easeIn = new CubicEase { EasingMode = EasingMode.EaseIn };
-            AuraScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, new DoubleAnimation(0.82, new Duration(TimeSpan.FromMilliseconds(340))) { EasingFunction = easeIn });
-            AuraScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, new DoubleAnimation(0.82, new Duration(TimeSpan.FromMilliseconds(340))) { EasingFunction = easeIn });
-            _auraTimer?.Stop();
+            IslandShake.BeginAnimation(System.Windows.Media.TranslateTransform.XProperty, null);
+            IslandShake.X = 0;
         }
 
         var dur = new Duration(TimeSpan.FromMilliseconds(target == IslandState.ControlCenter ? 420 : 360));
@@ -487,6 +471,19 @@ public partial class IslandWindow : Window
             // body varsa biraz daha uzun göster
         }
         else NotifBodyText.Visibility = Visibility.Collapsed;
+        // App ikonu — gerçek logo varsa göster, yoksa mavi ◧ fallback
+        if (info.AppIcon != null)
+        {
+            NotifAppIcon.Source = info.AppIcon;
+            NotifAppIcon.Visibility = Visibility.Visible;
+            NotifIconFallback.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            NotifAppIcon.Source = null;
+            NotifAppIcon.Visibility = Visibility.Collapsed;
+            NotifIconFallback.Visibility = Visibility.Visible;
+        }
 
         // Apple'dan alınmış morph (BackEase) ama Windows renkleri ile
         AnimateTo(IslandState.Notification);
@@ -842,12 +839,12 @@ public partial class IslandWindow : Window
                 IslandBorder.Background = g;
                 IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
             }
-            // Bento kartlar — düşük opaklık vs opak
-            var bentoBg = lowOpacity ? System.Windows.Media.Color.FromArgb(0xE6, 0x11, 0x11, 0x13) : System.Windows.Media.Color.FromArgb(0xFF, 0x11, 0x11, 0x13);
+            // Bento kartlar — düşük opaklık vs opak (radius 20 — 3. görsel)
+            var bentoBg = lowOpacity ? System.Windows.Media.Color.FromArgb(0xE6, 0x18, 0x18, 0x1C) : System.Windows.Media.Color.FromArgb(0xFF, 0x18, 0x18, 0x1C);
             var bentoBorder = lowOpacity ? System.Windows.Media.Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF) : System.Windows.Media.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF);
             foreach (var c in FindVisualChildren<System.Windows.Controls.Border>(ControlCenterGrid))
             {
-                if (c.CornerRadius == new CornerRadius(16))
+                if (c.CornerRadius == new CornerRadius(20))
                 {
                     c.Background = new System.Windows.Media.SolidColorBrush(bentoBg);
                     c.BorderBrush = new System.Windows.Media.SolidColorBrush(bentoBorder);
@@ -863,43 +860,6 @@ public partial class IslandWindow : Window
             catch { }
         }
         catch { }
-    }
-    private void LoadAuraIntensity()
-    {
-        try
-        {
-            var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "aura.txt");
-            if (System.IO.File.Exists(p) && int.TryParse(System.IO.File.ReadAllText(p).Trim(), out var v) && v >= 1 && v <= 3)
-            {
-                AuraIntensitySlider.ValueChanged -= AuraIntensity_Changed;
-                AuraIntensitySlider.Value = v;
-                AuraIntensitySlider.ValueChanged += AuraIntensity_Changed;
-                ApplyAuraIntensity(v);
-                return;
-            }
-        }
-        catch { }
-        ApplyAuraIntensity(3);
-    }
-    private void ApplyAuraIntensity(int level)
-    {
-        if (FullscreenAura == null || AuraBlur == null || AuraValueText == null) return;
-        // 1=hafif, 2=orta, 3=ağır (3x)
-        FullscreenAura.BorderThickness = new Thickness(level * 2 + 2); // 1->4, 2->6, 3->8
-        AuraBlur.Radius = level * 8; // 1->8, 2->16, 3->24
-        // Opacity'yi sıfırlama — bildirim sırasında 1, değilse 0 kalmalı; burada dokunma
-        AuraValueText.Text = level == 1 ? "Yoğun: 1x" : level == 2 ? "Yoğun: 2x" : "Yoğun: 3x";
-        try
-        {
-            var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless");
-            System.IO.Directory.CreateDirectory(dir);
-            System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "aura.txt"), level.ToString());
-        }
-        catch { }
-    }
-    private void AuraIntensity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        ApplyAuraIntensity((int)Math.Round(e.NewValue));
     }
     private static System.Collections.Generic.IEnumerable<T> FindVisualChildren<T>(DependencyObject dep) where T : DependencyObject
     {

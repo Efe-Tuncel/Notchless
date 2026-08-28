@@ -31,6 +31,27 @@ public sealed class FullscreenService : IDisposable
             var fg = NativeMethods.GetForegroundWindow();
             if (fg == IntPtr.Zero || fg == _hwnd) { Show(); return; }
             if (!NativeMethods.GetWindowRect(fg, out var r)) { Show(); return; }
+
+            // Masaüstü / shell pencereleri fullscreen sanılmasın — tıklayınca ada kaybolma bug'ı
+            try
+            {
+                var sb = new System.Text.StringBuilder(256);
+                NativeMethods.GetClassName(fg, sb, sb.Capacity);
+                string cls = sb.ToString();
+                if (cls == "Progman" || cls == "WorkerW" || cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd")
+                { Show(); return; }
+                // Explorer desktop'ı filtrele
+                NativeMethods.GetWindowThreadProcessId(fg, out uint pid);
+                try
+                {
+                    using var p = System.Diagnostics.Process.GetProcessById((int)pid);
+                    if (p.ProcessName.Equals("explorer", StringComparison.OrdinalIgnoreCase) && (cls == "Progman" || cls == "WorkerW"))
+                    { Show(); return; }
+                }
+                catch { }
+            }
+            catch { }
+
             // Tüm ekranları kontrol et — herhangi biriyle tam eşleşiyorsa fullscreen
             foreach (var screen in System.Windows.Forms.Screen.AllScreens)
             {

@@ -93,7 +93,15 @@
         <TextBlock Text="Notchless — Windows Dynamic Island • Tek exe, MSIX yok • GitHub: Efe-Tuncel/Notchless" Foreground="#666" FontSize="9" TextWrapping="Wrap"/>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-            <Button Content="Kaydet" Style="{StaticResource Card}" Padding="16,7" Background="#2B5DFF" Foreground="White" BorderThickness="0" Click="Save_Click" Margin="0,0,8,0" Cursor="Hand"/>
+            <Button Content="Kaydet" Padding="16,7" Background="#2B5DFF" Foreground="White" BorderThickness="0" Click="Save_Click" Margin="0,0,8,0" Cursor="Hand">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
             <Button Content="Kapat" Padding="16,7" Background="#1A1A1E" Foreground="White" BorderBrush="#1EFFFFFF" BorderThickness="1" Click="Close_Click" Cursor="Hand">
                 <Button.Template>
                     <ControlTemplate TargetType="Button">

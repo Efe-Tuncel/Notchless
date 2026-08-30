@@ -139,17 +139,10 @@ public class NotificationService : IDisposable
             var root = AutomationElement.RootElement;
             if (root == null) return;
 
-            // Unpackaged fallback — sadece gerçek toast host'larını tara, genel pencereleri değil.
-            // Windows 11'de toast'lar ShellExperienceHost.exe içinde, class whitelist ile geliyor.
-            // Eski kodda ControlType.Window fallback tüm pencereleri (CabinetWClass, Chrome_WidgetWin_1) "bildirim" sanıyordu — düzeltildi.
-            var whitelist = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "Windows.UI.Notifications.ToastWindow",
-                "Windows.UI.Core.CoreWindow",
-                "XamlExplorerHostIslandWindow"
-            };
-
-            // Tüm top-level Window'ları al, sonra process + class ile filtrele
+            // Unpackaged fallback — sınıf ADINA güvenme: yeni Windows 11 build'lerinde toast
+            // penceresinin sınıfı değişiyor (Chrome/web-push toast'ları whitelist'e takılıp
+            // hiç yakalanmıyordu). Bunun yerine süreç + boyut + çok-satır ad guards'ına güven.
+            // Bu guards'lar CabinetWClass / flyout gibi yanlış pozitifleri zaten eler.
             var winCond = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window);
             var allWins = root.FindAll(TreeScope.Children, winCond);
             foreach (AutomationElement el in allWins)
@@ -157,9 +150,8 @@ public class NotificationService : IDisposable
                 try
                 {
                     string className = el.Current.ClassName ?? "";
-                    if (!whitelist.Contains(className)) continue;
 
-                    // Process filtre — sadece ShellExperienceHost (Win11) / explorer host edenler, Chrome/Explorer'ı ele
+                    // Process filtre — toast'ı host eden explorer / ShellExperienceHost
                     int pid = 0;
                     try { pid = el.Current.ProcessId; } catch { continue; }
                     string procName = "";
@@ -168,18 +160,18 @@ public class NotificationService : IDisposable
                                || procName.Equals("explorer", StringComparison.OrdinalIgnoreCase);
                     if (!isHost) continue;
 
-                    // Boyut heuristiği — toast'lar küçük ve sağ-alt köşede, tam ekran pencere değil
+                    // Boyut heuristiği — toast'lar küçük/sağ-altta, tam ekran veya flyout değil
                     try
                     {
                         var rect = el.Current.BoundingRectangle;
-                        if (rect.Width > 600 || rect.Height > 250 || rect.Width < 200 || rect.Height < 40) continue;
-                        // Ekran sağ-alt kontrolü (opsiyonel, fazla kısıtlamamak için sadece çok büyükleri eledik)
+                        if (rect.Width > 700 || rect.Height > 300 || rect.Width < 200 || rect.Height < 40) continue;
                     }
                     catch { }
 
                     string name = el.Current.Name ?? "";
                     if (string.IsNullOrWhiteSpace(name)) continue;
-                    // Name genellikle "AppName\nTitle\nBody" formatında — CabinetWClass gibi tek kelimelikleri ele
+                    // Toast adı "Uygulama\nBaşlık\nGövde" biçiminde çok satırlıdır;
+                    // tek satırlı adlar (klasör, flyout, tooltip) bildirim değildir
                     if (!name.Contains("\n") && !name.Contains("\r")) continue;
                     if (name.Contains("Notchless", StringComparison.OrdinalIgnoreCase)) continue;
 

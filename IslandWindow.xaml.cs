@@ -37,6 +37,8 @@ public partial class IslandWindow : Window
     private readonly ThemeService _theme = new();
     private WColor _custom1 = WColor.FromRgb(0x0F,0x0F,0x10);
     private WColor _custom2 = WColor.FromRgb(0x1A,0x1A,0x1E);
+    private int _customActive = 1;
+    private bool _wheelGenerated = false;
     private DownloadWatcherService? _dlWatcher;
     private FullscreenService? _fullscreen;
     private DispatcherTimer? _notifHideTimer;
@@ -822,6 +824,8 @@ public partial class IslandWindow : Window
                 if (_theme.CustomTheme != null) { _custom1 = _theme.CustomTheme.IslandGrad1; _custom2 = _theme.CustomTheme.IslandGrad2; }
                 CustomColor1Preview.Background = new System.Windows.Media.SolidColorBrush(_custom1);
                 CustomColor2Preview.Background = new System.Windows.Media.SolidColorBrush(_custom2);
+                EnsureColorWheel();
+                UpdateCustomActiveBorder();
             }
             catch { }
             SettingsAutoStartCheck.IsChecked = Helpers.RegistryHelper.IsAutoStartEnabled();
@@ -871,43 +875,93 @@ public partial class IslandWindow : Window
         SettingsNotifText.Text = $"{e.NewValue:0.0} sn";
         try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"notif_duration.txt"), e.NewValue.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch { }
     }
-    private void CustomColor1_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            using var dlg = new System.Windows.Forms.ColorDialog { FullOpen = true, AnyColor = true, Color = System.Drawing.Color.FromArgb(_custom1.A, _custom1.R, _custom1.G, _custom1.B) };
-            if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                _custom1 = WColor.FromArgb(dlg.Color.A, dlg.Color.R, dlg.Color.G, dlg.Color.B);
-                CustomColor1Preview.Background = new System.Windows.Media.SolidColorBrush(_custom1);
-            }
-        }
-        catch { }
-    }
-    private void CustomColor2_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            using var dlg = new System.Windows.Forms.ColorDialog { FullOpen = true, AnyColor = true, Color = System.Drawing.Color.FromArgb(_custom2.A, _custom2.R, _custom2.G, _custom2.B) };
-            if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                _custom2 = WColor.FromArgb(dlg.Color.A, dlg.Color.R, dlg.Color.G, dlg.Color.B);
-                CustomColor2Preview.Background = new System.Windows.Media.SolidColorBrush(_custom2);
-            }
-        }
-        catch { }
-    }
     private void CustomApply_Click(object sender, RoutedEventArgs e)
     {
         _theme.SetCustomTheme(_custom1, _custom2);
         _theme.ApplyTo(this);
-        // picker'a custom ekle ve seç
         try
         {
             var list = ThemeService.Themes.ToList();
             if (_theme.CustomTheme != null && !list.Any(x => x.Name == "Custom")) list.Add(_theme.CustomTheme);
             SettingsThemePicker.ItemsSource = list;
             SettingsThemePicker.SelectedItem = _theme.CustomTheme;
+        }
+        catch { }
+    }
+    private void CustomPreview1_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) { _customActive = 1; UpdateCustomActiveBorder(); }
+    private void CustomPreview2_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) { _customActive = 2; UpdateCustomActiveBorder(); }
+    private void UpdateCustomActiveBorder()
+    {
+        try
+        {
+            CustomColor1Preview.BorderThickness = new Thickness(_customActive == 1 ? 2 : 1);
+            CustomColor1Preview.BorderBrush = new System.Windows.Media.SolidColorBrush(_customActive == 1 ? WColor.FromArgb(0xFF,0xFF,0xFF,0xFF) : WColor.FromArgb(0x44,0xFF,0xFF,0xFF));
+            CustomColor2Preview.BorderThickness = new Thickness(_customActive == 2 ? 2 : 1);
+            CustomColor2Preview.BorderBrush = new System.Windows.Media.SolidColorBrush(_customActive == 2 ? WColor.FromArgb(0xFF,0xFF,0xFF,0xFF) : WColor.FromArgb(0x44,0xFF,0xFF,0xFF));
+        }
+        catch { }
+    }
+    private void EnsureColorWheel()
+    {
+        if (_wheelGenerated) return;
+        try
+        {
+            int size = 180;
+            var bmp = new System.Windows.Media.Imaging.WriteableBitmap(size, size, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null);
+            int stride = size * 4;
+            var pixels = new byte[size * size * 4];
+            double cx = size / 2.0, cy = size / 2.0, radius = size / 2.0 - 2;
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    double dx = x - cx, dy = y - cy;
+                    double dist = Math.Sqrt(dx*dx + dy*dy);
+                    int idx = (y * size + x) * 4;
+                    if (dist > radius) { pixels[idx]=0; pixels[idx+1]=0; pixels[idx+2]=0; pixels[idx+3]=0; continue; }
+                    double hue = (Math.Atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+                    double sat = dist / radius;
+                    // HSV -> RGB, V=1
+                    var rgb = HsvToRgb(hue, sat, 1);
+                    pixels[idx] = rgb.B; pixels[idx+1] = rgb.G; pixels[idx+2] = rgb.R; pixels[idx+3] = 255;
+                }
+            bmp.WritePixels(new Int32Rect(0,0,size,size), pixels, stride, 0);
+            ColorWheelImage.Source = bmp;
+            _wheelGenerated = true;
+        }
+        catch { }
+    }
+    private static WColor HsvToRgb(double h, double s, double v)
+    {
+        double c = v * s, x = c * (1 - Math.Abs((h/60)%2 -1)), m = v - c;
+        double r=0,g=0,b=0;
+        if (h < 60) { r=c; g=x; }
+        else if (h < 120) { r=x; g=c; }
+        else if (h < 180) { g=c; b=x; }
+        else if (h < 240) { g=x; b=c; }
+        else if (h < 300) { r=x; b=c; }
+        else { r=c; b=x; }
+        return WColor.FromRgb((byte)((r+m)*255), (byte)((g+m)*255), (byte)((b+m)*255));
+    }
+    private void ColorWheel_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) => PickWheelColor(e);
+    private void ColorWheel_MouseMove(object sender, System.Windows.Input.MouseEventArgs e) { if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed) PickWheelColor(e); }
+    private void PickWheelColor(System.Windows.Input.MouseEventArgs e)
+    {
+        try
+        {
+            var pos = e.GetPosition(ColorWheelImage);
+            double cx = 90, cy = 90, radius = 88;
+            double dx = pos.X - cx, dy = pos.Y - cy;
+            double dist = Math.Sqrt(dx*dx+dy*dy);
+            if (dist > radius) return;
+            double hue = (Math.Atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+            double sat = dist / radius;
+            var col = HsvToRgb(hue, sat, 1);
+            if (_customActive == 1) { _custom1 = col; CustomColor1Preview.Background = new System.Windows.Media.SolidColorBrush(col); }
+            else { _custom2 = col; CustomColor2Preview.Background = new System.Windows.Media.SolidColorBrush(col); }
+            // indicator
+            ColorWheelIndicator.Visibility = Visibility.Visible;
+            System.Windows.Controls.Canvas.SetLeft(ColorWheelIndicator, pos.X - 5);
+            System.Windows.Controls.Canvas.SetTop(ColorWheelIndicator, pos.Y - 5);
         }
         catch { }
     }

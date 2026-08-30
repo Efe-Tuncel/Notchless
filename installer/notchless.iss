@@ -21,7 +21,6 @@ OutputBaseFilename=Notchless-Setup-{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=..\Notchless.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog

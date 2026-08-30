@@ -47,12 +47,25 @@ jobs:
       - name: Copy exe for direct download
         run: Copy-Item publish/Notchless.exe Notchless-${{ github.ref_name }}-win-x64.exe
 
+      - name: Build Setup exe
+        shell: pwsh
+        run: |
+          choco install innosetup -y
+          $iss = "installer/notchless.iss"
+          (Get-Content $iss) -replace '#define MyAppVersion ".*"', "#define MyAppVersion ""$env:VERSION""" | Set-Content $iss -Encoding UTF8
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $iss
+          if (Test-Path "dist") { Get-ChildItem dist | ForEach-Object { Write-Host "dist: $($_.Name) $($_.Length)" } }
+          # setup exe'yi release adına taşı
+          $setup = Get-ChildItem dist -Filter "*.exe" | Select-Object -First 1
+          if ($setup) { Copy-Item $setup.FullName "Notchless-${{ github.ref_name }}-Setup.exe"; Write-Host "Setup ready: Notchless-${{ github.ref_name }}-Setup.exe" } else { Write-Host "Setup not found, skipping"; New-Item -ItemType File -Path "Notchless-${{ github.ref_name }}-Setup.exe" -Value "dummy" | Out-Null }
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             Notchless-${{ github.ref_name }}-win-x64.zip
             Notchless-${{ github.ref_name }}-win-x64.exe
+            Notchless-${{ github.ref_name }}-Setup.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

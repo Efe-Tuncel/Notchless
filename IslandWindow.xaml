@@ -405,14 +405,22 @@
                             </Border>
                             <Border Style="{StaticResource BentoCard}">
                                 <StackPanel>
-                                    <TextBlock Text="Custom — 2 renk seç" Foreground="#888" FontSize="9" Margin="0,0,0,6"/>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <Border x:Name="CustomColor1Preview" Width="24" Height="24" CornerRadius="12" Background="#0F0F10" BorderBrush="#44FFFFFF" BorderThickness="1"/>
-                                        <Button Content="Renk 1" Style="{StaticResource IconBtn}" FontSize="9" Padding="8,4" Margin="6,0,0,0" Click="CustomColor1_Click"/>
-                                        <Border x:Name="CustomColor2Preview" Width="24" Height="24" CornerRadius="12" Background="#1A1A1E" BorderBrush="#44FFFFFF" BorderThickness="1" Margin="12,0,0,0"/>
-                                        <Button Content="Renk 2" Style="{StaticResource IconBtn}" FontSize="9" Padding="8,4" Margin="6,0,0,0" Click="CustomColor2_Click"/>
+                                    <TextBlock Text="Custom — 2 renk seç (dairesel palet)" Foreground="#888" FontSize="9" Margin="0,0,0,6"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                        <Border x:Name="CustomColor1Preview" Width="28" Height="28" CornerRadius="14" Background="#0F0F10" BorderBrush="#44FFFFFF" BorderThickness="2" Cursor="Hand" MouseLeftButtonDown="CustomPreview1_Click"/>
+                                        <TextBlock Text="Renk 1" Foreground="#888" FontSize="8" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                        <Border x:Name="CustomColor2Preview" Width="28" Height="28" CornerRadius="14" Background="#1A1A1E" BorderBrush="#22FFFFFF" BorderThickness="1" Margin="12,0,0,0" Cursor="Hand" MouseLeftButtonDown="CustomPreview2_Click"/>
+                                        <TextBlock Text="Renk 2" Foreground="#888" FontSize="8" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                     </StackPanel>
-                                    <Button Content="Custom Uygula" Style="{StaticResource AccentPill}" FontSize="9" Padding="10,4" HorizontalAlignment="Center" Margin="0,8,0,0" Click="CustomApply_Click"/>
+                                    <!-- Dairesel renk çemberi — 2. görsel gibi -->
+                                    <Border Width="180" Height="180" CornerRadius="90" BorderBrush="#44FFFFFF" BorderThickness="1" HorizontalAlignment="Center" ClipToBounds="True">
+                                        <Canvas Width="180" Height="180">
+                                            <Image x:Name="ColorWheelImage" Width="180" Height="180" Stretch="Fill" MouseLeftButtonDown="ColorWheel_MouseDown" MouseMove="ColorWheel_MouseMove" Cursor="Hand" Panel.ZIndex="0"/>
+                                            <Ellipse x:Name="ColorWheelIndicator" Width="10" Height="10" Stroke="White" StrokeThickness="2" Fill="Transparent" IsHitTestVisible="False" Visibility="Collapsed" Panel.ZIndex="1"/>
+                                        </Canvas>
+                                    </Border>
+                                    <TextBlock Text="Çemberden seç, önizleme üstte" Foreground="#666" FontSize="8" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                    <Button Content="Custom Uygula" Style="{StaticResource AccentPill}" FontSize="9" Padding="12,6" HorizontalAlignment="Center" Margin="0,8,0,0" Click="CustomApply_Click"/>
                                 </StackPanel>
                             </Border>
 

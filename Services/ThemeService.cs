@@ -215,7 +215,7 @@ public sealed class ThemeService
                 try { hud.Background = new SolidColorBrush(t.IsLight ? WColor.FromRgb(0xF0,0xF0,0xF0) : WColor.FromRgb(0x11,0x11,0x13)); } catch { }
                 try { hud.BorderBrush = new SolidColorBrush(t.CardBorder); } catch { }
             }
-            // ExpandedGrid içindeki küçük kartlar da bento değil — arka planı düzelt (AlbumArt border vb.)
+            // ExpandedGrid + Compact — tema buraya uygulanmıyor fix (1. görsel)
             try
             {
                 var exp = w.FindName("ExpandedGrid") as System.Windows.Controls.Grid;
@@ -224,9 +224,47 @@ public sealed class ThemeService
                     foreach (var b in FindVisualChildren<System.Windows.Controls.Border>(exp))
                     {
                         if (b.Width == 44 && b.Height == 44) // AlbumArt
-                        {
                             b.Background = new SolidColorBrush(t.IsLight ? WColor.FromRgb(0xE8,0xE8,0xE8) : WColor.FromRgb(0x1E,0x1E,0x20));
-                        }
+                    }
+                    // Text renkleri
+                    var mt = w.FindName("MediaTitle") as System.Windows.Controls.TextBlock;
+                    var ma = w.FindName("MediaArtist") as System.Windows.Controls.TextBlock;
+                    var vl = w.FindName("VolumeLabel") as System.Windows.Controls.TextBlock;
+                    var bl = w.FindName("BrightnessLabel") as System.Windows.Controls.TextBlock;
+                    if (mt != null) mt.Foreground = new SolidColorBrush(t.TextPrimary);
+                    if (ma != null) ma.Foreground = new SolidColorBrush(t.TextSecondary);
+                    if (vl != null) vl.Foreground = new SolidColorBrush(t.TextPrimary);
+                    if (bl != null) bl.Foreground = new SolidColorBrush(t.TextPrimary);
+                    // ProgressBar
+                    var mp = w.FindName("MediaProgress") as System.Windows.Controls.ProgressBar;
+                    if (mp != null) { mp.Foreground = new SolidColorBrush(t.Accent); mp.Background = new SolidColorBrush(t.IsLight ? WColor.FromRgb(0xE0,0xE0,0xE0) : WColor.FromRgb(0x2A,0x2A,0x2E)); }
+                    var hb = w.FindName("HudBar") as System.Windows.Controls.ProgressBar;
+                    if (hb != null) { hb.Foreground = new SolidColorBrush(t.Accent); }
+                }
+                // Compact
+                var ct = w.FindName("CompactTimeText") as System.Windows.Controls.TextBlock;
+                var cb = w.FindName("CompactBatteryText") as System.Windows.Controls.TextBlock;
+                if (ct != null) ct.Foreground = new SolidColorBrush(t.TextPrimary);
+                if (cb != null) cb.Foreground = new SolidColorBrush(t.TextSecondary);
+                var cw = w.FindName("CompactWave") as System.Windows.Controls.StackPanel;
+                if (cw != null) foreach (var r in FindVisualChildren<System.Windows.Shapes.Rectangle>(cw)) r.Fill = new SolidColorBrush(t.TextPrimary);
+            }
+            catch { }
+            // Bento iç TextBlock'lar — IsLight'ta #888 → #666
+            try
+            {
+                foreach (var grid in new[] { ccGrid, settingsGrid })
+                {
+                    if (grid == null) continue;
+                    foreach (var tb in FindVisualChildren<System.Windows.Controls.TextBlock>(grid))
+                    {
+                        // Sadece sabit renkli olanları çevir: #888, #666, White
+                        var c = (tb.Foreground as SolidColorBrush)?.Color;
+                        if (c == null) continue;
+                        if (c.Value.R == 0x88 && c.Value.G == 0x88 && c.Value.B == 0x88)
+                            tb.Foreground = new SolidColorBrush(t.TextSecondary);
+                        else if (c.Value.R == 0xFF && c.Value.G == 0xFF && c.Value.B == 0xFF && tb.FontWeight == FontWeights.SemiBold)
+                            tb.Foreground = new SolidColorBrush(t.TextPrimary);
                     }
                 }
             }

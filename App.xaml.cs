@@ -72,7 +72,6 @@ public partial class App : System.Windows.Application
             _island.Show();
             Log("Show() done");
 
-            SystemEvents.DisplaySettingsChanged += (_, _) => _island?.Dispatcher.BeginInvoke(() => { });
             Log("OnStartup success");
         }
         catch (Exception ex)

@@ -47,6 +47,9 @@ public partial class IslandWindow : Window
     private TimeSpan _remaining = TimeSpan.Zero;
     private bool _timerRunning;
     private DispatcherTimer? _activeAnimTimer;
+    private DispatcherTimer? _topmostTimer;
+    private bool _syncingToggles;
+    private bool _suppressTransparentCheck;
 
     // animation targets — CC genişletildi (Pil/Zaman sığması için 440)
     private static readonly (double w, double h, double r) CompactSize = (128, 36, 18);
@@ -224,20 +227,24 @@ public partial class IslandWindow : Window
             _theme.Load();
             _theme.ApplyTo(this);
             // eski transparent checkbox ile uyum: Graphite≈transparent, Midnight≈opaque
-            try { TransparentModeCheck.IsChecked = _theme.Current.Name != "Midnight"; } catch { }
+            // Guard şart: programatik IsChecked değişimi Checked eventini tetikleyip
+            // kullanıcının seçtiği temayı Graphite/Midnight'a zorluyordu
+            try { _suppressTransparentCheck = true; TransparentModeCheck.IsChecked = _theme.Current.Name != "Midnight"; }
+            catch { }
+            finally { _suppressTransparentCheck = false; }
         }
         catch { try { _theme.ApplyTo(this); } catch { } }
         LoadTimerPresets();
         // Hep üste: WPF Topmost + Win32 TOPMOST (masaüstüne tıklayınca gizlenmesin)
         Topmost = true;
-        var topmostTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        topmostTimer.Tick += (_, _) =>
+        _topmostTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _topmostTimer.Tick += (_, _) =>
         {
             if (!Topmost) Topmost = true;
             NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
                 NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
         };
-        topmostTimer.Start();
+        _topmostTimer.Start();
 
         // Faz 5 tam ekran gizleme (GetForegroundWindow + SW_HIDE)
         _fullscreen = new FullscreenService(_hwnd);
@@ -249,6 +256,13 @@ public partial class IslandWindow : Window
             HudValue.Text = state == "completed" ? $"{file} indi" : $"{file} indiriliyor…";
             HudToast.Visibility = Visibility.Visible;
         });
+        // Kalıcı ayarları açılışta geri yükle (eski sürümlerde kaydediliyor ama uygulanmıyordu)
+        try
+        {
+            if (ReadSettingFlag("exclude_capture.txt")) ApplyExcludeCapture(true);
+            if (ReadSettingFlag("audiohook.txt")) ApplyAudioHook(true);
+        }
+        catch { }
         // Bildirim dinleyici — gerçek Windows NotificationListener
         _notif.NotificationReceived += info => Dispatcher.BeginInvoke(() => ShowNotification(info));
         _ = _notif.TryEnableAsync().ContinueWith(t =>
@@ -272,7 +286,7 @@ public partial class IslandWindow : Window
         _notif.Dispose();
         _dlWatcher?.Dispose(); _fullscreen?.Dispose();
         _clockTimer.Stop(); _camMicTimer.Stop(); _hudTimer.Stop();
-        _countdownTimer?.Stop(); _notifHideTimer?.Stop(); _activeAnimTimer?.Stop();
+        _countdownTimer?.Stop(); _notifHideTimer?.Stop(); _activeAnimTimer?.Stop(); _topmostTimer?.Stop();
     }
 
     private void OnDisplayChanged(object? s, EventArgs e) => Dispatcher.BeginInvoke(PositionOnPrimary);
@@ -488,7 +502,9 @@ public partial class IslandWindow : Window
         // Apple'dan alınmış morph (BackEase) ama Windows renkleri ile
         AnimateTo(IslandState.Notification);
         _notifHideTimer?.Stop();
-        _notifHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(string.IsNullOrWhiteSpace(info.Text) ? 3.2 : 4.5) };
+        var notifDur = ReadNotifDuration();
+        if (string.IsNullOrWhiteSpace(info.Text)) notifDur = Math.Max(2.0, notifDur - 1.3);
+        _notifHideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(notifDur) };
         _notifHideTimer.Tick += (_, _) =>
         {
             _notifHideTimer?.Stop();
@@ -785,19 +801,80 @@ public partial class IslandWindow : Window
 
     private void ExcludeCapture_Checked(object sender, RoutedEventArgs e)
     {
-        if (_hwnd != IntPtr.Zero) NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE);
+        if (_syncingToggles) return;
+        ApplyExcludeCapture(true);
     }
     private void ExcludeCapture_Unchecked(object sender, RoutedEventArgs e)
     {
-        if (_hwnd != IntPtr.Zero) NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_NONE);
+        if (_syncingToggles) return;
+        ApplyExcludeCapture(false);
     }
 
     private void AudioHook_Checked(object sender, RoutedEventArgs e)
     {
-        if (!_audioHook.TryEnable())
-            System.Windows.MessageBox.Show("Ses tuşu hook'u kurulamadı. Yönetici gerekebilir veya AV engelliyor.", "Notchless", MessageBoxButton.OK, MessageBoxImage.Warning);
+        if (_syncingToggles) return;
+        ApplyAudioHook(true);
     }
-    private void AudioHook_Unchecked(object sender, RoutedEventArgs e) => _audioHook.Disable();
+    private void AudioHook_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (_syncingToggles) return;
+        ApplyAudioHook(false);
+    }
+
+    private void ApplyExcludeCapture(bool on)
+    {
+        if (_hwnd != IntPtr.Zero)
+            NativeMethods.SetWindowDisplayAffinity(_hwnd, on ? NativeMethods.WDA_EXCLUDEFROMCAPTURE : NativeMethods.WDA_NONE);
+        WriteSettingFile("exclude_capture.txt", on ? "1" : "0");
+        _syncingToggles = true;
+        try { ExcludeCaptureCheck.IsChecked = on; SettingsExcludeCheck.IsChecked = on; }
+        catch { }
+        finally { _syncingToggles = false; }
+    }
+
+    private void ApplyAudioHook(bool on)
+    {
+        if (on)
+        {
+            if (!_audioHook.TryEnable())
+                System.Windows.MessageBox.Show("Ses tuşu hook'u kurulamadı. Yönetici gerekebilir veya AV engelliyor.", "Notchless", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        else _audioHook.Disable();
+        WriteSettingFile("audiohook.txt", on ? "1" : "0");
+        _syncingToggles = true;
+        try { AudioHookCheck.IsChecked = on; SettingsAudioCheck.IsChecked = on; }
+        catch { }
+        finally { _syncingToggles = false; }
+    }
+
+    private static string SettingsDir() => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless");
+
+    private static void WriteSettingFile(string file, string val)
+    {
+        try { System.IO.Directory.CreateDirectory(SettingsDir()); System.IO.File.WriteAllText(System.IO.Path.Combine(SettingsDir(), file), val); } catch { }
+    }
+
+    private static bool ReadSettingFlag(string file)
+    {
+        try
+        {
+            var p = System.IO.Path.Combine(SettingsDir(), file);
+            return System.IO.File.Exists(p) && System.IO.File.ReadAllText(p).Trim() == "1";
+        }
+        catch { return false; }
+    }
+
+    private static double ReadNotifDuration()
+    {
+        try
+        {
+            var p = System.IO.Path.Combine(SettingsDir(), "notif_duration.txt");
+            if (System.IO.File.Exists(p) && double.TryParse(System.IO.File.ReadAllText(p).Trim(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                return Math.Clamp(d, 2, 8);
+        }
+        catch { }
+        return 4.5;
+    }
 
     private void CloseControlCenter_Click(object sender, RoutedEventArgs e) => AnimateTo(IslandState.Compact);
     private void OpenControlCenter_Click(object sender, RoutedEventArgs e) => AnimateTo(IslandState.ControlCenter);
@@ -829,18 +906,8 @@ public partial class IslandWindow : Window
             }
             catch { }
             SettingsAutoStartCheck.IsChecked = Helpers.RegistryHelper.IsAutoStartEnabled();
-            try
-            {
-                var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "exclude_capture.txt");
-                SettingsExcludeCheck.IsChecked = System.IO.File.Exists(p) && System.IO.File.ReadAllText(p).Trim() == "1";
-            }
-            catch { SettingsExcludeCheck.IsChecked = false; }
-            try
-            {
-                var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "audiohook.txt");
-                SettingsAudioCheck.IsChecked = System.IO.File.Exists(p) && System.IO.File.ReadAllText(p).Trim() == "1";
-            }
-            catch { SettingsAudioCheck.IsChecked = false; }
+            SettingsExcludeCheck.IsChecked = ReadSettingFlag("exclude_capture.txt");
+            SettingsAudioCheck.IsChecked = ReadSettingFlag("audiohook.txt");
             try
             {
                 var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "notif_duration.txt");
@@ -865,10 +932,10 @@ public partial class IslandWindow : Window
     }
     private void SettingsAutoStart_Checked(object s, RoutedEventArgs e) => Helpers.RegistryHelper.SetAutoStart(true);
     private void SettingsAutoStart_Unchecked(object s, RoutedEventArgs e) => Helpers.RegistryHelper.SetAutoStart(false);
-    private void SettingsExclude_Checked(object s, RoutedEventArgs e) { try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"exclude_capture.txt"),"1"); } catch { } }
-    private void SettingsExclude_Unchecked(object s, RoutedEventArgs e) { try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"exclude_capture.txt"),"0"); } catch { } }
-    private void SettingsAudio_Checked(object s, RoutedEventArgs e) { try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"audiohook.txt"),"1"); } catch { } }
-    private void SettingsAudio_Unchecked(object s, RoutedEventArgs e) { try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"audiohook.txt"),"0"); } catch { } }
+    private void SettingsExclude_Checked(object s, RoutedEventArgs e) { if (_syncingToggles) return; ApplyExcludeCapture(true); }
+    private void SettingsExclude_Unchecked(object s, RoutedEventArgs e) { if (_syncingToggles) return; ApplyExcludeCapture(false); }
+    private void SettingsAudio_Checked(object s, RoutedEventArgs e) { if (_syncingToggles) return; ApplyAudioHook(true); }
+    private void SettingsAudio_Unchecked(object s, RoutedEventArgs e) { if (_syncingToggles) return; ApplyAudioHook(false); }
     private void SettingsNotifSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (SettingsNotifText == null) return;
@@ -1059,6 +1126,7 @@ public partial class IslandWindow : Window
 
     private void TransparentMode_Checked(object sender, RoutedEventArgs e)
     {
+        if (_suppressTransparentCheck) return;
         _theme.SetTheme("Graphite");
         _theme.Save();
         _theme.ApplyTo(this);
@@ -1066,6 +1134,7 @@ public partial class IslandWindow : Window
     }
     private void TransparentMode_Unchecked(object sender, RoutedEventArgs e)
     {
+        if (_suppressTransparentCheck) return;
         _theme.SetTheme("Midnight");
         _theme.Save();
         _theme.ApplyTo(this);

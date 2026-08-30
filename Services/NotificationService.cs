@@ -232,8 +232,9 @@ public class NotificationService : IDisposable
                 }
                 catch (Exception ex) { Log($"Poll parse err: {ex.Message}"); }
             }
-            // temizlik: kapanan bildirimleri unutma ki liste şişmesin (30dk'dan eskiyi at)
-            if (_seen.Count > 200) _seen.Clear();
+            // temizlik: artık aktif olmayan ID'leri unut — listeyi tamamen boşaltmak
+            // hâlâ duran bildirimleri yeniden gösteriyordu, onun yerine mevcutlarla kesiş
+            if (_seen.Count > 200) _seen.IntersectWith(list.Select(n => n.Id));
         }
         catch (Exception ex) { Log($"PollAsync err: {ex.Message}"); }
     }

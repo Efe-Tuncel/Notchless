@@ -111,6 +111,28 @@ public partial class SettingsWindow : Window
         SaveSimple("notif_duration.txt", e.NewValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    private static string GetCurrentVersion()
+    {
+        try
+        {
+            var attr = System.Attribute.GetCustomAttribute(System.Reflection.Assembly.GetExecutingAssembly(), typeof(System.Reflection.AssemblyInformationalVersionAttribute)) as System.Reflection.AssemblyInformationalVersionAttribute;
+            var info = attr?.InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(info))
+            {
+                var v = info.Trim().TrimStart('v').Split('+')[0].Split('-')[0].Trim();
+                if (!string.IsNullOrWhiteSpace(v)) return v;
+            }
+        }
+        catch { }
+        try
+        {
+            var v = typeof(SettingsWindow).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+            if (v.EndsWith(".0")) v = v.Substring(0, v.Length - 2);
+            return v;
+        }
+        catch { return "0.0.0"; }
+    }
+
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
         CheckUpdateBtn.IsEnabled = false;
@@ -122,13 +144,58 @@ public partial class SettingsWindow : Window
             var json = await http.GetStringAsync("https://api.github.com/repos/Efe-Tuncel/Notchless/releases/latest");
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             var tag = doc.RootElement.GetProperty("tag_name").GetString() ?? "unknown";
-            var cur = GetType().Assembly.GetName().Version?.ToString() ?? "0.0.0";
+            var cur = GetCurrentVersion();
+            var tagNorm = tag.Trim().TrimStart('v').Split('+')[0].Split('-')[0].Trim();
+            // Version normalize: "1.3.5.0" vs "1.3.5" eşit say
+            string Norm(string s) { try { if (s.EndsWith(".0")) s = s.Substring(0, s.Length - 2); return s; } catch { return s; } }
+            cur = Norm(cur); tagNorm = Norm(tagNorm);
             UpdateStatusText.Text = $"Son sürüm: {tag} • Şu an: v{cur} • {DateTime.Now:HH:mm}";
-            // basit karşılaştırma
-            if (tag.TrimStart('v') != cur)
-                System.Windows.MessageBox.Show($"Yeni sürüm var: {tag}\nGitHub Releases'ten indirin.", "Notchless Güncelleme", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (tagNorm != cur)
+            {
+                var res = System.Windows.MessageBox.Show($"Yeni sürüm var: {tag}\nŞu an: v{cur}\nİndirip otomatik kurulsun mu?\n(Ayarlar korunur)", "Notchless Güncelleme", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (res == MessageBoxResult.Yes)
+                {
+                    try
+                    {
+                        string assetUrl = "";
+                        if (doc.RootElement.TryGetProperty("assets", out var assets))
+                        {
+                            foreach (var a in assets.EnumerateArray())
+                            {
+                                var n = a.GetProperty("name").GetString() ?? "";
+                                if (n.Contains("Setup", StringComparison.OrdinalIgnoreCase) && n.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                                { assetUrl = a.GetProperty("browser_download_url").GetString() ?? ""; break; }
+                            }
+                            if (string.IsNullOrEmpty(assetUrl))
+                                foreach (var a in assets.EnumerateArray())
+                                {
+                                    var n2 = a.GetProperty("name").GetString() ?? "";
+                                    if (n2.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) { assetUrl = a.GetProperty("browser_download_url").GetString() ?? ""; break; }
+                                }
+                        }
+                        if (string.IsNullOrEmpty(assetUrl))
+                        {
+                            System.Windows.MessageBox.Show("Setup dosyası bulunamadı, GitHub Releases sayfasına yönlendiriliyorsunuz.", "Notchless");
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/Efe-Tuncel/Notchless/releases/latest") { UseShellExecute = true });
+                            return;
+                        }
+                        UpdateStatusText.Text = "İndiriliyor...";
+                        var tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Notchless-Setup-" + tag + ".exe");
+                        using (var hc = new System.Net.Http.HttpClient())
+                        {
+                            hc.DefaultRequestHeaders.UserAgent.ParseAdd("Notchless/1.0");
+                            var bytes = await hc.GetByteArrayAsync(assetUrl);
+                            System.IO.File.WriteAllBytes(tmp, bytes);
+                        }
+                        UpdateStatusText.Text = "Kuruluyor...";
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tmp) { UseShellExecute = true, Arguments = "/SILENT" });
+                        System.Windows.Application.Current.Shutdown();
+                    }
+                    catch (Exception dlEx) { System.Windows.MessageBox.Show($"İndirme hatası: {dlEx.Message}", "Notchless", MessageBoxButton.OK, MessageBoxImage.Error); }
+                }
+            }
             else
-                System.Windows.MessageBox.Show("En güncel sürümdesiniz.", "Notchless", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show($"En güncel sürümdesiniz. (v{cur})", "Notchless", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { UpdateStatusText.Text = $"Hata: {ex.Message}"; }
         finally { CheckUpdateBtn.IsEnabled = true; }

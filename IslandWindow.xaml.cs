@@ -35,6 +35,8 @@ public partial class IslandWindow : Window
     private readonly BluetoothBatteryService _bt = new();
     private readonly NotificationService _notif = new();
     private readonly ThemeService _theme = new();
+    private WColor _custom1 = WColor.FromRgb(0x0F,0x0F,0x10);
+    private WColor _custom2 = WColor.FromRgb(0x1A,0x1A,0x1E);
     private DownloadWatcherService? _dlWatcher;
     private FullscreenService? _fullscreen;
     private DispatcherTimer? _notifHideTimer;
@@ -810,11 +812,18 @@ public partial class IslandWindow : Window
     {
         try
         {
-            if (SettingsThemePicker.Items.Count == 0)
+            var list = ThemeService.Themes.ToList();
+            if (_theme.CustomTheme != null && !list.Any(x => x.Name == "Custom")) list.Add(_theme.CustomTheme);
+            SettingsThemePicker.ItemsSource = list;
+            SettingsThemePicker.SelectedItem = list.FirstOrDefault(t => t.Name == _theme.Current.Name) ?? list[0];
+            // custom preview — meşhur renk dairesi (ColorDialog)
+            try
             {
-                SettingsThemePicker.ItemsSource = ThemeService.Themes;
+                if (_theme.CustomTheme != null) { _custom1 = _theme.CustomTheme.IslandGrad1; _custom2 = _theme.CustomTheme.IslandGrad2; }
+                CustomColor1Preview.Background = new System.Windows.Media.SolidColorBrush(_custom1);
+                CustomColor2Preview.Background = new System.Windows.Media.SolidColorBrush(_custom2);
             }
-            SettingsThemePicker.SelectedItem = ThemeService.Themes.FirstOrDefault(t => t.Name == _theme.Current.Name) ?? ThemeService.Themes[0];
+            catch { }
             SettingsAutoStartCheck.IsChecked = Helpers.RegistryHelper.IsAutoStartEnabled();
             try
             {
@@ -862,6 +871,68 @@ public partial class IslandWindow : Window
         SettingsNotifText.Text = $"{e.NewValue:0.0} sn";
         try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"notif_duration.txt"), e.NewValue.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch { }
     }
+    private void CustomColor1_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            using var dlg = new System.Windows.Forms.ColorDialog { FullOpen = true, AnyColor = true, Color = System.Drawing.Color.FromArgb(_custom1.A, _custom1.R, _custom1.G, _custom1.B) };
+            if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                _custom1 = WColor.FromArgb(dlg.Color.A, dlg.Color.R, dlg.Color.G, dlg.Color.B);
+                CustomColor1Preview.Background = new System.Windows.Media.SolidColorBrush(_custom1);
+            }
+        }
+        catch { }
+    }
+    private void CustomColor2_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            using var dlg = new System.Windows.Forms.ColorDialog { FullOpen = true, AnyColor = true, Color = System.Drawing.Color.FromArgb(_custom2.A, _custom2.R, _custom2.G, _custom2.B) };
+            if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                _custom2 = WColor.FromArgb(dlg.Color.A, dlg.Color.R, dlg.Color.G, dlg.Color.B);
+                CustomColor2Preview.Background = new System.Windows.Media.SolidColorBrush(_custom2);
+            }
+        }
+        catch { }
+    }
+    private void CustomApply_Click(object sender, RoutedEventArgs e)
+    {
+        _theme.SetCustomTheme(_custom1, _custom2);
+        _theme.ApplyTo(this);
+        // picker'a custom ekle ve seç
+        try
+        {
+            var list = ThemeService.Themes.ToList();
+            if (_theme.CustomTheme != null && !list.Any(x => x.Name == "Custom")) list.Add(_theme.CustomTheme);
+            SettingsThemePicker.ItemsSource = list;
+            SettingsThemePicker.SelectedItem = _theme.CustomTheme;
+        }
+        catch { }
+    }
+    private static string IslandGetCurrentVersion()
+    {
+        try
+        {
+            var attr = System.Attribute.GetCustomAttribute(System.Reflection.Assembly.GetExecutingAssembly(), typeof(System.Reflection.AssemblyInformationalVersionAttribute)) as System.Reflection.AssemblyInformationalVersionAttribute;
+            var info = attr?.InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(info))
+            {
+                var v = info.Trim().TrimStart('v').Split('+')[0].Split('-')[0].Trim();
+                if (!string.IsNullOrWhiteSpace(v)) return v;
+            }
+        }
+        catch { }
+        try
+        {
+            var v = typeof(IslandWindow).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+            if (v.EndsWith(".0")) v = v.Substring(0, v.Length - 2);
+            return v;
+        }
+        catch { return "0.0.0"; }
+    }
+
     private async void SettingsCheckUpdate_Click(object sender, RoutedEventArgs e)
     {
         SettingsCheckUpdateBtn.IsEnabled = false;
@@ -873,12 +944,60 @@ public partial class IslandWindow : Window
             var json = await http.GetStringAsync("https://api.github.com/repos/Efe-Tuncel/Notchless/releases/latest");
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             var tag = doc.RootElement.GetProperty("tag_name").GetString() ?? "unknown";
-            var cur = GetType().Assembly.GetName().Version?.ToString() ?? "0.0.0";
-            SettingsUpdateText.Text = $"Son sürüm: {tag} • Şu an: v{cur}";
-            if (tag.TrimStart('v') != cur)
-                System.Windows.MessageBox.Show($"Yeni sürüm var: {tag}\nGitHub Releases'ten indirin.", "Notchless Güncelleme", MessageBoxButton.OK, MessageBoxImage.Information);
+            var cur = IslandGetCurrentVersion();
+            var tagNorm = tag.Trim().TrimStart('v').Split('+')[0].Split('-')[0].Trim();
+            string Norm(string s) { try { if (s.EndsWith(".0")) s = s.Substring(0, s.Length - 2); return s; } catch { return s; } }
+            cur = Norm(cur); tagNorm = Norm(tagNorm);
+            SettingsUpdateText.Text = $"Son sürüm: {tag} • Şu an: v{cur} • {DateTime.Now:HH:mm}";
+            if (tagNorm != cur)
+            {
+                var res = System.Windows.MessageBox.Show($"Yeni sürüm var: {tag}\nŞu an: v{cur}\nİndirip otomatik kurulsun mu?\n(Ayarlar korunur)", "Notchless Güncelleme", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (res == MessageBoxResult.Yes)
+                {
+                    try
+                    {
+                        string assetUrl = "";
+                        if (doc.RootElement.TryGetProperty("assets", out var assets))
+                        {
+                            foreach (var a in assets.EnumerateArray())
+                            {
+                                var name = a.GetProperty("name").GetString() ?? "";
+                                if (name.Contains("Setup", StringComparison.OrdinalIgnoreCase) && name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                                { assetUrl = a.GetProperty("browser_download_url").GetString() ?? ""; break; }
+                            }
+                            if (string.IsNullOrEmpty(assetUrl))
+                            {
+                                foreach (var a in assets.EnumerateArray())
+                                {
+                                    var n2 = a.GetProperty("name").GetString() ?? "";
+                                    if (n2.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) { assetUrl = a.GetProperty("browser_download_url").GetString() ?? ""; break; }
+                                }
+                            }
+                        }
+                        if (string.IsNullOrEmpty(assetUrl))
+                        {
+                            System.Windows.MessageBox.Show("Setup dosyası bulunamadı, GitHub Releases sayfasına yönlendiriliyorsunuz.", "Notchless");
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/Efe-Tuncel/Notchless/releases/latest") { UseShellExecute = true });
+                            return;
+                        }
+                        SettingsUpdateText.Text = "İndiriliyor...";
+                        var tmp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Notchless-Setup-" + tag + ".exe");
+                        using (var hc = new System.Net.Http.HttpClient())
+                        {
+                            hc.DefaultRequestHeaders.UserAgent.ParseAdd("Notchless/1.0");
+                            var bytes = await hc.GetByteArrayAsync(assetUrl);
+                            System.IO.File.WriteAllBytes(tmp, bytes);
+                        }
+                        SettingsUpdateText.Text = "Kuruluyor...";
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(tmp) { UseShellExecute = true, Arguments = "/SILENT" });
+                        // Ayarlar korunur — %LocalAppData%\Notchless silinmez (installer script)
+                        System.Windows.Application.Current.Shutdown();
+                    }
+                    catch (Exception dlEx) { System.Windows.MessageBox.Show($"İndirme hatası: {dlEx.Message}", "Notchless", MessageBoxButton.OK, MessageBoxImage.Error); }
+                }
+            }
             else
-                System.Windows.MessageBox.Show("En güncel sürümdesiniz.", "Notchless", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show($"En güncel sürümdesiniz. (v{cur})", "Notchless", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { SettingsUpdateText.Text = $"Hata: {ex.Message}"; }
         finally { SettingsCheckUpdateBtn.IsEnabled = true; }

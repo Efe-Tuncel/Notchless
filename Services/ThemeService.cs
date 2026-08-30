@@ -63,6 +63,7 @@ public sealed class ThemeService
     private static readonly string ThemePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "theme.json");
 
     public ThemeDefinition Current { get; private set; } = Themes.First(t => t.Name == "Graphite");
+    public ThemeDefinition? CustomTheme { get; private set; }
 
     public void Load()
     {
@@ -83,8 +84,35 @@ public sealed class ThemeService
             if (doc.RootElement.TryGetProperty("selected", out var sel))
             {
                 var name = sel.GetString() ?? "Graphite";
-                var found = Themes.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-                if (found != null) Current = found;
+                if (name.Equals("Custom", StringComparison.OrdinalIgnoreCase) && doc.RootElement.TryGetProperty("customGrad1", out var c1) && doc.RootElement.TryGetProperty("customGrad2", out var c2))
+                {
+                    try
+                    {
+                        var col1 = (WColor)System.Windows.Media.ColorConverter.ConvertFromString(c1.GetString()!);
+                        var col2 = (WColor)System.Windows.Media.ColorConverter.ConvertFromString(c2.GetString()!);
+                        SetCustomTheme(col1, col2, save:false);
+                        Current = CustomTheme!;
+                    }
+                    catch { }
+                }
+                else
+                {
+                    var found = Themes.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    if (found != null) Current = found;
+                }
+            }
+            // load custom even if not selected, for picker
+            if (doc.RootElement.TryGetProperty("customGrad1", out var cc1) && doc.RootElement.TryGetProperty("customGrad2", out var cc2))
+            {
+                try
+                {
+                    var col1 = (WColor)System.Windows.Media.ColorConverter.ConvertFromString(cc1.GetString()!);
+                    var col2 = (WColor)System.Windows.Media.ColorConverter.ConvertFromString(cc2.GetString()!);
+                    var tmp = CustomTheme == null;
+                    SetCustomTheme(col1, col2, save:false);
+                    if (tmp && Current.Name != "Custom") { /* keep current */ }
+                }
+                catch { }
             }
         }
         catch { }
@@ -95,16 +123,45 @@ public sealed class ThemeService
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(ThemePath)!);
-            var json = JsonSerializer.Serialize(new { selected = Current.Name });
-            File.WriteAllText(ThemePath, json);
+            if (Current.Name == "Custom" && CustomTheme != null)
+            {
+                var json = JsonSerializer.Serialize(new { selected = Current.Name, customGrad1 = CustomTheme.IslandGrad1.ToString(), customGrad2 = CustomTheme.IslandGrad2.ToString() });
+                File.WriteAllText(ThemePath, json);
+            }
+            else if (CustomTheme != null)
+            {
+                var json = JsonSerializer.Serialize(new { selected = Current.Name, customGrad1 = CustomTheme.IslandGrad1.ToString(), customGrad2 = CustomTheme.IslandGrad2.ToString() });
+                File.WriteAllText(ThemePath, json);
+            }
+            else
+            {
+                var json = JsonSerializer.Serialize(new { selected = Current.Name });
+                File.WriteAllText(ThemePath, json);
+            }
         }
         catch { }
     }
 
     public void SetTheme(string name)
     {
+        if (name.Equals("Custom", StringComparison.OrdinalIgnoreCase) && CustomTheme != null) { Current = CustomTheme; return; }
         var found = Themes.FirstOrDefault(t => t.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (found != null) Current = found;
+    }
+
+    public void SetCustomTheme(WColor grad1, WColor grad2, bool save = true)
+    {
+        bool isLight = (grad1.R * 0.299 + grad1.G * 0.587 + grad1.B * 0.114) > 160 && (grad2.R * 0.299 + grad2.G * 0.587 + grad2.B * 0.114) > 160;
+        var cardBg = isLight ? WColor.FromArgb(0xF2, 0xFF, 0xFF, 0xFF) : WColor.FromArgb(0xE6, (byte)(grad1.R/4 + grad2.R/4 + 20), (byte)(grad1.G/4 + grad2.G/4 + 20), (byte)(grad1.B/4 + grad2.B/4 + 20));
+        var cardBorder = isLight ? WColor.FromArgb(0xFF,0xE0,0xE0,0xE0) : WColor.FromArgb(0x1E,0xFF,0xFF,0xFF);
+        var borderBrush = isLight ? WColor.FromArgb(0x30,0x00,0x00,0x00) : WColor.FromArgb(0x22,0xFF,0xFF,0xFF);
+        var text1 = isLight ? WColor.FromRgb(0x11,0x11,0x11) : WColor.FromRgb(0xFF,0xFF,0xFF);
+        var text2 = isLight ? WColor.FromRgb(0x66,0x66,0x66) : WColor.FromRgb(0xAA,0xAA,0xAA);
+        // accent ortalaması
+        var accent = WColor.FromRgb((byte)((grad1.R+grad2.R)/2), (byte)((grad1.G+grad2.G)/2), (byte)((grad1.B+grad2.B)/2));
+        CustomTheme = new ThemeDefinition("Custom", "Custom", grad1, grad2, cardBg, cardBorder, borderBrush, text1, text2, accent, isLight);
+        Current = CustomTheme;
+        if (save) Save();
     }
 
     public void ApplyTo(IslandWindow w)
@@ -115,7 +172,9 @@ public sealed class ThemeService
             var t = Current;
             var island = w.FindName("IslandBorder") as System.Windows.Controls.Border;
             var ccGrid = w.FindName("ControlCenterGrid") as System.Windows.Controls.Grid;
+            var settingsGrid = w.FindName("SettingsGrid") as System.Windows.Controls.Grid;
             var hud = w.FindName("HudToast") as System.Windows.Controls.Border;
+            var root = w.FindName("RootGrid") as System.Windows.Controls.Grid;
             if (island != null)
             {
                 var g = new LinearGradientBrush
@@ -130,9 +189,11 @@ public sealed class ThemeService
                 island.Background = g;
                 island.BorderBrush = new SolidColorBrush(t.BorderBrush);
             }
-            if (ccGrid != null)
+            // Tüm bento kartlar — ControlCenter + Settings
+            foreach (var grid in new[] { ccGrid, settingsGrid })
             {
-                foreach (var c in FindVisualChildren<System.Windows.Controls.Border>(ccGrid))
+                if (grid == null) continue;
+                foreach (var c in FindVisualChildren<System.Windows.Controls.Border>(grid))
                 {
                     if (c.CornerRadius == new CornerRadius(20))
                     {
@@ -140,12 +201,36 @@ public sealed class ThemeService
                         c.BorderBrush = new SolidColorBrush(t.CardBorder);
                     }
                 }
+                // ScrollViewer temaya uysun — beyaz kalmasın
+                foreach (var sv in FindVisualChildren<System.Windows.Controls.ScrollViewer>(grid))
+                {
+                    sv.Background = new SolidColorBrush(WColor.FromArgb(0x00,0x00,0x00,0x00));
+                }
             }
+            // Root ve pencere arka planı
+            try { if (root != null) root.Background = new SolidColorBrush(WColor.FromArgb(0x00,0x00,0x00,0x00)); } catch { }
+            try { w.Background = new SolidColorBrush(WColor.FromArgb(0x00,0x00,0x00,0x00)); } catch { }
             if (hud != null)
             {
                 try { hud.Background = new SolidColorBrush(t.IsLight ? WColor.FromRgb(0xF0,0xF0,0xF0) : WColor.FromRgb(0x11,0x11,0x13)); } catch { }
                 try { hud.BorderBrush = new SolidColorBrush(t.CardBorder); } catch { }
             }
+            // ExpandedGrid içindeki küçük kartlar da bento değil — arka planı düzelt (AlbumArt border vb.)
+            try
+            {
+                var exp = w.FindName("ExpandedGrid") as System.Windows.Controls.Grid;
+                if (exp != null)
+                {
+                    foreach (var b in FindVisualChildren<System.Windows.Controls.Border>(exp))
+                    {
+                        if (b.Width == 44 && b.Height == 44) // AlbumArt
+                        {
+                            b.Background = new SolidColorBrush(t.IsLight ? WColor.FromRgb(0xE8,0xE8,0xE8) : WColor.FromRgb(0x1E,0x1E,0x20));
+                        }
+                    }
+                }
+            }
+            catch { }
         }
         catch { }
     }

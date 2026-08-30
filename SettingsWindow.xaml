@@ -20,7 +20,7 @@
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
     </Window.Resources>
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
     <StackPanel Margin="20">
         <TextBlock Text="Ayarlar" Foreground="White" FontSize="22" FontWeight="Bold"/>
         <TextBlock x:Name="VersionText" Text="v1.2.7" Foreground="#888" FontSize="10" Margin="0,2,0,0"/>

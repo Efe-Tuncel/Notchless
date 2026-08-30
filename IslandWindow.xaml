@@ -382,7 +382,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <TextBlock Text="Notchless — Ayarlar" Foreground="#AAAAAA" FontSize="10" FontFamily="Consolas" HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="380">
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="380" Background="Transparent">
                         <StackPanel>
                             <TextBlock Text="TEMA (10)" Foreground="#9ECAFF" FontSize="9" FontWeight="SemiBold" Margin="0,6,0,6"/>
                             <Border Style="{StaticResource BentoCard}">
@@ -401,6 +401,18 @@
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource BentoCard}">
+                                <StackPanel>
+                                    <TextBlock Text="Custom — 2 renk seç" Foreground="#888" FontSize="9" Margin="0,0,0,6"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Border x:Name="CustomColor1Preview" Width="24" Height="24" CornerRadius="12" Background="#0F0F10" BorderBrush="#44FFFFFF" BorderThickness="1"/>
+                                        <Button Content="Renk 1" Style="{StaticResource IconBtn}" FontSize="9" Padding="8,4" Margin="6,0,0,0" Click="CustomColor1_Click"/>
+                                        <Border x:Name="CustomColor2Preview" Width="24" Height="24" CornerRadius="12" Background="#1A1A1E" BorderBrush="#44FFFFFF" BorderThickness="1" Margin="12,0,0,0"/>
+                                        <Button Content="Renk 2" Style="{StaticResource IconBtn}" FontSize="9" Padding="8,4" Margin="6,0,0,0" Click="CustomColor2_Click"/>
+                                    </StackPanel>
+                                    <Button Content="Custom Uygula" Style="{StaticResource AccentPill}" FontSize="9" Padding="10,4" HorizontalAlignment="Center" Margin="0,8,0,0" Click="CustomApply_Click"/>
                                 </StackPanel>
                             </Border>
 

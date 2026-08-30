@@ -15,7 +15,7 @@ namespace Notchless;
 
 public partial class IslandWindow : Window
 {
-    private enum IslandState { Compact, Expanded, ControlCenter, Notification }
+    private enum IslandState { Compact, Expanded, ControlCenter, Settings, Notification }
 
     private IslandState _state = IslandState.Compact;
     private IntPtr _hwnd;
@@ -48,6 +48,7 @@ public partial class IslandWindow : Window
     private static readonly (double w, double h, double r) CompactSize = (128, 36, 18);
     private static readonly (double w, double h, double r) ExpandedSize = (380, 168, 20);
     private static readonly (double w, double h, double r) ControlCenterSize = (440, 480, 24);
+    private static readonly (double w, double h, double r) SettingsSize = (440, 520, 24);
     private static readonly (double w, double h, double r) NotificationSize = (360, 78, 20);
 
     public IslandWindow()
@@ -334,6 +335,7 @@ public partial class IslandWindow : Window
             IslandState.Compact => CompactSize,
             IslandState.Expanded => ExpandedSize,
             IslandState.ControlCenter => ControlCenterSize,
+            IslandState.Settings => SettingsSize,
             IslandState.Notification => NotificationSize,
             _ => CompactSize
         };
@@ -343,6 +345,7 @@ public partial class IslandWindow : Window
         CompactGrid.Visibility = target == IslandState.Compact ? Visibility.Visible : Visibility.Collapsed;
         ExpandedGrid.Visibility = target == IslandState.Expanded ? Visibility.Visible : Visibility.Collapsed;
         ControlCenterGrid.Visibility = target == IslandState.ControlCenter ? Visibility.Visible : Visibility.Collapsed;
+        SettingsGrid.Visibility = target == IslandState.Settings ? Visibility.Visible : Visibility.Collapsed;
         NotificationGrid.Visibility = isNotif ? Visibility.Visible : Visibility.Collapsed;
         // Windows tarzı arka plan: bildirimde Fluent koyu + mavi border
         if (isNotif)
@@ -796,27 +799,89 @@ public partial class IslandWindow : Window
     private void OpenControlCenter_Click(object sender, RoutedEventArgs e) => AnimateTo(IslandState.ControlCenter);
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
+        // Kontrol Merkezi → Ayarlar morph (ayrı pencere yerine ada içinde)
+        AnimateTo(IslandState.Settings);
+        InitSettingsGrid();
+    }
+
+    private void SettingsBack_Click(object sender, RoutedEventArgs e) => AnimateTo(IslandState.ControlCenter);
+
+    private void InitSettingsGrid()
+    {
         try
         {
-            var sw = new SettingsWindow(this);
-            // Owner Topmost ToolWindow ile z-order çakışmaması için Owner atama yok, CenterScreen kullan
-            sw.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            sw.ShowDialog();
-            // dönüşte tema yeniden uygula (preview rollback vs)
-            _theme.Load();
-            _theme.ApplyTo(this);
-        }
-        catch (Exception ex)
-        {
+            if (SettingsThemePicker.Items.Count == 0)
+            {
+                SettingsThemePicker.ItemsSource = ThemeService.Themes;
+            }
+            SettingsThemePicker.SelectedItem = ThemeService.Themes.FirstOrDefault(t => t.Name == _theme.Current.Name) ?? ThemeService.Themes[0];
+            SettingsAutoStartCheck.IsChecked = Helpers.RegistryHelper.IsAutoStartEnabled();
             try
             {
-                var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless");
-                System.IO.Directory.CreateDirectory(dir);
-                System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "startup.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} Settings open err: {ex}\n");
+                var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "exclude_capture.txt");
+                SettingsExcludeCheck.IsChecked = System.IO.File.Exists(p) && System.IO.File.ReadAllText(p).Trim() == "1";
+            }
+            catch { SettingsExcludeCheck.IsChecked = false; }
+            try
+            {
+                var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "audiohook.txt");
+                SettingsAudioCheck.IsChecked = System.IO.File.Exists(p) && System.IO.File.ReadAllText(p).Trim() == "1";
+            }
+            catch { SettingsAudioCheck.IsChecked = false; }
+            try
+            {
+                var p = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless", "notif_duration.txt");
+                if (System.IO.File.Exists(p) && double.TryParse(System.IO.File.ReadAllText(p).Trim(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                {
+                    SettingsNotifSlider.Value = Math.Clamp(d, 2, 8);
+                    SettingsNotifText.Text = $"{d:0.0} sn";
+                }
             }
             catch { }
-            System.Windows.MessageBox.Show($"Ayarlar açılamadı:\n{ex.Message}\n\n{ex.StackTrace}", "Notchless", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+        catch { }
+    }
+    private void SettingsThemePicker_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (SettingsThemePicker.SelectedItem is ThemeDefinition td)
+        {
+            _theme.SetTheme(td.Name);
+            _theme.Save();
+            _theme.ApplyTo(this);
+        }
+    }
+    private void SettingsAutoStart_Checked(object s, RoutedEventArgs e) => Helpers.RegistryHelper.SetAutoStart(true);
+    private void SettingsAutoStart_Unchecked(object s, RoutedEventArgs e) => Helpers.RegistryHelper.SetAutoStart(false);
+    private void SettingsExclude_Checked(object s, RoutedEventArgs e) { try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"exclude_capture.txt"),"1"); } catch { } }
+    private void SettingsExclude_Unchecked(object s, RoutedEventArgs e) { try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"exclude_capture.txt"),"0"); } catch { } }
+    private void SettingsAudio_Checked(object s, RoutedEventArgs e) { try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"audiohook.txt"),"1"); } catch { } }
+    private void SettingsAudio_Unchecked(object s, RoutedEventArgs e) { try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"audiohook.txt"),"0"); } catch { } }
+    private void SettingsNotifSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (SettingsNotifText == null) return;
+        SettingsNotifText.Text = $"{e.NewValue:0.0} sn";
+        try { var d=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Notchless"); System.IO.Directory.CreateDirectory(d); System.IO.File.WriteAllText(System.IO.Path.Combine(d,"notif_duration.txt"), e.NewValue.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch { }
+    }
+    private async void SettingsCheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsCheckUpdateBtn.IsEnabled = false;
+        SettingsUpdateText.Text = "Kontrol ediliyor...";
+        try
+        {
+            using var http = new System.Net.Http.HttpClient();
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Notchless/1.0");
+            var json = await http.GetStringAsync("https://api.github.com/repos/Efe-Tuncel/Notchless/releases/latest");
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var tag = doc.RootElement.GetProperty("tag_name").GetString() ?? "unknown";
+            var cur = GetType().Assembly.GetName().Version?.ToString() ?? "0.0.0";
+            SettingsUpdateText.Text = $"Son sürüm: {tag} • Şu an: v{cur}";
+            if (tag.TrimStart('v') != cur)
+                System.Windows.MessageBox.Show($"Yeni sürüm var: {tag}\nGitHub Releases'ten indirin.", "Notchless Güncelleme", MessageBoxButton.OK, MessageBoxImage.Information);
+            else
+                System.Windows.MessageBox.Show("En güncel sürümdesiniz.", "Notchless", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { SettingsUpdateText.Text = $"Hata: {ex.Message}"; }
+        finally { SettingsCheckUpdateBtn.IsEnabled = true; }
     }
 
     private void TransparentMode_Checked(object sender, RoutedEventArgs e)

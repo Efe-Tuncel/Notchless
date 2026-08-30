@@ -373,6 +373,73 @@
                         <Button Grid.Column="1" Content="✕ Kapat" Style="{StaticResource PillBtn}" FontSize="11" Margin="6,0,0,0" HorizontalAlignment="Stretch" MinWidth="120" Click="CloseControlCenter_Click"/>
                     </Grid>
                 </Grid>
+
+                <!-- Settings bento — Kontrol Merkezi yerine dönüşür -->
+                <Grid x:Name="SettingsGrid" Visibility="Collapsed" Margin="16,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Notchless — Ayarlar" Foreground="#AAAAAA" FontSize="10" FontFamily="Consolas" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="380">
+                        <StackPanel>
+                            <TextBlock Text="TEMA (10)" Foreground="#9ECAFF" FontSize="9" FontWeight="SemiBold" Margin="0,6,0,6"/>
+                            <Border Style="{StaticResource BentoCard}">
+                                <StackPanel>
+                                    <ComboBox x:Name="SettingsThemePicker" SelectionChanged="SettingsThemePicker_Changed" FontSize="10" Background="#1A1A1E" Foreground="White">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                        <Ellipse.Fill>
+                                                            <SolidColorBrush Color="{Binding CardBg}"/>
+                                                        </Ellipse.Fill>
+                                                    </Ellipse>
+                                                    <TextBlock Text="{Binding DisplayName}" Foreground="White" FontSize="10" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="GENEL" Foreground="#9ECAFF" FontSize="9" FontWeight="SemiBold" Margin="0,10,0,6"/>
+                            <Border Style="{StaticResource BentoCard}">
+                                <StackPanel>
+                                    <CheckBox x:Name="SettingsAutoStartCheck" Content="Başlangıçta çalıştır" Foreground="White" FontSize="10" Checked="SettingsAutoStart_Checked" Unchecked="SettingsAutoStart_Unchecked"/>
+                                    <CheckBox x:Name="SettingsExcludeCheck" Content="Ekran görüntüsünden gizle" Foreground="White" FontSize="10" Margin="0,6,0,0" Checked="SettingsExclude_Checked" Unchecked="SettingsExclude_Unchecked"/>
+                                    <CheckBox x:Name="SettingsAudioCheck" Content="Ses tuşlarını yakala" Foreground="White" FontSize="10" Margin="0,6,0,0" Checked="SettingsAudio_Checked" Unchecked="SettingsAudio_Unchecked"/>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="BİLDİRİM" Foreground="#9ECAFF" FontSize="9" FontWeight="SemiBold" Margin="0,10,0,6"/>
+                            <Border Style="{StaticResource BentoCard}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Süre" Foreground="White" FontSize="10" VerticalAlignment="Center"/>
+                                    <Slider x:Name="SettingsNotifSlider" Minimum="2" Maximum="8" Value="4.5" Width="140" Margin="10,0" TickFrequency="0.5" IsSnapToTickEnabled="True" ValueChanged="SettingsNotifSlider_Changed"/>
+                                    <TextBlock x:Name="SettingsNotifText" Text="4.5 sn" Foreground="#9ECAFF" FontSize="10" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="GÜNCELLEME" Foreground="#9ECAFF" FontSize="9" FontWeight="SemiBold" Margin="0,10,0,6"/>
+                            <Border Style="{StaticResource BentoCard}">
+                                <StackPanel>
+                                    <Button x:Name="SettingsCheckUpdateBtn" Content="⟳ Güncellemeyi denetle" Style="{StaticResource AccentPill}" FontSize="10" Padding="10,6" HorizontalAlignment="Center" Click="SettingsCheckUpdate_Click"/>
+                                    <TextBlock x:Name="SettingsUpdateText" Text="Son kontrol: hiç yapılmadı" Foreground="#666" FontSize="8" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="← Geri" Style="{StaticResource PillBtn}" FontSize="11" Margin="0,0,6,0" HorizontalAlignment="Stretch" MinWidth="120" Click="SettingsBack_Click"/>
+                        <Button Grid.Column="1" Content="✕ Kapat" Style="{StaticResource PillBtn}" FontSize="11" Margin="6,0,0,0" HorizontalAlignment="Stretch" MinWidth="120" Click="CloseControlCenter_Click"/>
+                    </Grid>
+                </Grid>
             </Grid>
         </Border>
 

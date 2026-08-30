@@ -343,6 +343,24 @@ public partial class IslandWindow : Window
         NativeMethods.TrackMouseEvent(ref tme);
     }
 
+    private void ApplyIslandChrome()
+    {
+        var t = _theme.Current;
+        bool isTrans = TransparentModeCheck.IsChecked == true;
+        byte alpha = isTrans ? (byte)0xE6 : t.IslandGrad1.A;
+        IslandBorder.Background = new System.Windows.Media.LinearGradientBrush
+        {
+            StartPoint = new WPoint(0,0), EndPoint = new WPoint(1,1),
+            GradientStops = new System.Windows.Media.GradientStopCollection
+            {
+                new System.Windows.Media.GradientStop(WColor.FromArgb(alpha, t.IslandGrad1.R, t.IslandGrad1.G, t.IslandGrad1.B), 0),
+                new System.Windows.Media.GradientStop(WColor.FromArgb(alpha, t.IslandGrad2.R, t.IslandGrad2.G, t.IslandGrad2.B), 1)
+            }
+        };
+        IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(t.BorderBrush);
+        IslandBorder.BorderThickness = new Thickness(1);
+    }
+
     private void AnimateTo(IslandState target)
     {
         if (_state == target) return;
@@ -374,35 +392,11 @@ public partial class IslandWindow : Window
         }
         else
         {
-            // bildirim sonrası mavi border kaldı hatası — orijinal temaya dön
-            bool isTrans = TransparentModeCheck.IsChecked == true;
-            if (isTrans)
-            {
-                IslandBorder.Background = new System.Windows.Media.LinearGradientBrush
-                {
-                    StartPoint = new WPoint(0,0), EndPoint = new WPoint(1,1),
-                    GradientStops = new System.Windows.Media.GradientStopCollection
-                    {
-                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xE6, 0x0A, 0x0A, 0x0C), 0),
-                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xE6, 0x14, 0x14, 0x18), 1)
-                    }
-                };
-                IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
-            }
-            else
-            {
-                IslandBorder.Background = new System.Windows.Media.LinearGradientBrush
-                {
-                    StartPoint = new WPoint(0,0), EndPoint = new WPoint(1,1),
-                    GradientStops = new System.Windows.Media.GradientStopCollection
-                    {
-                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xFF, 0x0A, 0x0A, 0x0B), 0),
-                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xFF, 0x14, 0x14, 0x16), 1)
-                    }
-                };
-                IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
-            }
-            IslandBorder.BorderThickness = new Thickness(1);
+            // bildirim sonrası orijinal temaya dön — artık temanın kendi gradyanı kullanılır
+            // (eski kod sabit koyu gradyan basıyordu, bu yüzden medya alanı her temada siyah kalıyordu)
+            ApplyIslandChrome();
+            // Yeni görünür olan ızgaranın realize olmuş metin/kartlarını tema için gecikmeli uygula
+            Dispatcher.BeginInvoke(new Action(() => _theme.ApplyTo(this)), System.Windows.Threading.DispatcherPriority.Loaded);
         }
         // Bildirimde sadece çerçeve sallansın (aura kaldırıldı)
         if (isNotif)
@@ -1130,7 +1124,7 @@ public partial class IslandWindow : Window
         _theme.SetTheme("Graphite");
         _theme.Save();
         _theme.ApplyTo(this);
-        ApplyTransparentTheme(true);
+        WriteSettingFile("theme.txt", "transparent");
     }
     private void TransparentMode_Unchecked(object sender, RoutedEventArgs e)
     {
@@ -1138,62 +1132,7 @@ public partial class IslandWindow : Window
         _theme.SetTheme("Midnight");
         _theme.Save();
         _theme.ApplyTo(this);
-        ApplyTransparentTheme(false);
-    }
-    private void ApplyTransparentTheme(bool lowOpacity)
-    {
-        try
-        {
-            // Düşük opaklık (%85) vs opak — WDAC blur'suz, sadece alpha
-            if (lowOpacity)
-            {
-                var g = new System.Windows.Media.LinearGradientBrush
-                {
-                    StartPoint = new WPoint(0,0), EndPoint = new WPoint(1,1),
-                    GradientStops = new System.Windows.Media.GradientStopCollection
-                    {
-                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xE6, 0x0A, 0x0A, 0x0C), 0),
-                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xE6, 0x14, 0x14, 0x18), 1)
-                    }
-                };
-                IslandBorder.Background = g;
-                IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF));
-            }
-            else
-            {
-                var g = new System.Windows.Media.LinearGradientBrush
-                {
-                    StartPoint = new WPoint(0,0), EndPoint = new WPoint(1,1),
-                    GradientStops = new System.Windows.Media.GradientStopCollection
-                    {
-                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xFF, 0x0A, 0x0A, 0x0B), 0),
-                        new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xFF, 0x14, 0x14, 0x16), 1)
-                    }
-                };
-                IslandBorder.Background = g;
-                IslandBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
-            }
-            // Bento kartlar — düşük opaklık vs opak (radius 20 — 3. görsel)
-            var bentoBg = lowOpacity ? System.Windows.Media.Color.FromArgb(0xE6, 0x18, 0x18, 0x1C) : System.Windows.Media.Color.FromArgb(0xFF, 0x18, 0x18, 0x1C);
-            var bentoBorder = lowOpacity ? System.Windows.Media.Color.FromArgb(0x1E, 0xFF, 0xFF, 0xFF) : System.Windows.Media.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF);
-            foreach (var c in FindVisualChildren<System.Windows.Controls.Border>(ControlCenterGrid))
-            {
-                if (c.CornerRadius == new CornerRadius(20))
-                {
-                    c.Background = new System.Windows.Media.SolidColorBrush(bentoBg);
-                    c.BorderBrush = new System.Windows.Media.SolidColorBrush(bentoBorder);
-                }
-            }
-            // Ayarı sakla (WDAC hash değişmeden kalıcılık)
-            try
-            {
-                var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notchless");
-                System.IO.Directory.CreateDirectory(dir);
-                System.IO.File.WriteAllText(System.IO.Path.Combine(dir, "theme.txt"), lowOpacity ? "transparent" : "opaque");
-            }
-            catch { }
-        }
-        catch { }
+        WriteSettingFile("theme.txt", "opaque");
     }
     private static System.Collections.Generic.IEnumerable<T> FindVisualChildren<T>(DependencyObject dep) where T : DependencyObject
     {

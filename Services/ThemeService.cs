@@ -164,6 +164,8 @@ public sealed class ThemeService
         if (save) Save();
     }
 
+    private readonly Dictionary<System.Windows.Controls.TextBlock, WColor> _textBaseline = new();
+
     public void ApplyTo(IslandWindow w)
     {
         try
@@ -177,13 +179,15 @@ public sealed class ThemeService
             var root = w.FindName("RootGrid") as System.Windows.Controls.Grid;
             if (island != null)
             {
+                bool isTrans = (w.FindName("TransparentModeCheck") as System.Windows.Controls.CheckBox)?.IsChecked == true;
+                byte a = isTrans ? (byte)0xE6 : t.IslandGrad1.A;
                 var g = new LinearGradientBrush
                 {
                     StartPoint = new WPoint(0,0), EndPoint = new WPoint(1,1),
                     GradientStops = new GradientStopCollection
                     {
-                        new GradientStop(t.IslandGrad1, 0),
-                        new GradientStop(t.IslandGrad2, 1)
+                        new GradientStop(WColor.FromArgb(a, t.IslandGrad1.R, t.IslandGrad1.G, t.IslandGrad1.B), 0),
+                        new GradientStop(WColor.FromArgb(a, t.IslandGrad2.R, t.IslandGrad2.G, t.IslandGrad2.B), 1)
                     }
                 };
                 island.Background = g;
@@ -207,15 +211,7 @@ public sealed class ThemeService
                     sv.Background = new SolidColorBrush(WColor.FromArgb(0x00,0x00,0x00,0x00));
                 }
             }
-            // Root ve pencere arka planı
-            try { if (root != null) root.Background = new SolidColorBrush(WColor.FromArgb(0x00,0x00,0x00,0x00)); } catch { }
-            try { w.Background = new SolidColorBrush(WColor.FromArgb(0x00,0x00,0x00,0x00)); } catch { }
-            if (hud != null)
-            {
-                try { hud.Background = new SolidColorBrush(t.IsLight ? WColor.FromRgb(0xF0,0xF0,0xF0) : WColor.FromRgb(0x11,0x11,0x13)); } catch { }
-                try { hud.BorderBrush = new SolidColorBrush(t.CardBorder); } catch { }
-            }
-            // ExpandedGrid + Compact — tema buraya uygulanmıyor fix (1. görsel)
+            // ExpandedGrid — album art + progress bar
             try
             {
                 var exp = w.FindName("ExpandedGrid") as System.Windows.Controls.Grid;
@@ -226,51 +222,82 @@ public sealed class ThemeService
                         if (b.Width == 44 && b.Height == 44) // AlbumArt
                             b.Background = new SolidColorBrush(t.IsLight ? WColor.FromRgb(0xE8,0xE8,0xE8) : WColor.FromRgb(0x1E,0x1E,0x20));
                     }
-                    // Text renkleri
-                    var mt = w.FindName("MediaTitle") as System.Windows.Controls.TextBlock;
-                    var ma = w.FindName("MediaArtist") as System.Windows.Controls.TextBlock;
-                    var vl = w.FindName("VolumeLabel") as System.Windows.Controls.TextBlock;
-                    var bl = w.FindName("BrightnessLabel") as System.Windows.Controls.TextBlock;
-                    if (mt != null) mt.Foreground = new SolidColorBrush(t.TextPrimary);
-                    if (ma != null) ma.Foreground = new SolidColorBrush(t.TextSecondary);
-                    if (vl != null) vl.Foreground = new SolidColorBrush(t.TextPrimary);
-                    if (bl != null) bl.Foreground = new SolidColorBrush(t.TextPrimary);
-                    // ProgressBar
                     var mp = w.FindName("MediaProgress") as System.Windows.Controls.ProgressBar;
                     if (mp != null) { mp.Foreground = new SolidColorBrush(t.Accent); mp.Background = new SolidColorBrush(t.IsLight ? WColor.FromRgb(0xE0,0xE0,0xE0) : WColor.FromRgb(0x2A,0x2A,0x2E)); }
-                    var hb = w.FindName("HudBar") as System.Windows.Controls.ProgressBar;
-                    if (hb != null) { hb.Foreground = new SolidColorBrush(t.Accent); }
                 }
-                // Compact
-                var ct = w.FindName("CompactTimeText") as System.Windows.Controls.TextBlock;
-                var cb = w.FindName("CompactBatteryText") as System.Windows.Controls.TextBlock;
-                if (ct != null) ct.Foreground = new SolidColorBrush(t.TextPrimary);
-                if (cb != null) cb.Foreground = new SolidColorBrush(t.TextSecondary);
-                var cw = w.FindName("CompactWave") as System.Windows.Controls.StackPanel;
-                if (cw != null) foreach (var r in FindVisualChildren<System.Windows.Shapes.Rectangle>(cw)) r.Fill = new SolidColorBrush(t.TextPrimary);
+                var hb = w.FindName("HudBar") as System.Windows.Controls.ProgressBar;
+                if (hb != null) { hb.Foreground = new SolidColorBrush(t.Accent); }
             }
             catch { }
-            // Bento iç TextBlock'lar — IsLight'ta #888 → #666
-            try
+            // METİN — kapsamlı ve kararlı: her TextBlock'un orijinal XAML rengini bir kez yakala,
+            // sonra orijinal->tema eşle. Böylece tekrar çağrılarda renk kaymaz (idempotent).
+            ApplyTextTheme(w, t, hud, w.FindName("NotificationGrid") as System.Windows.DependencyObject);
+            // Root ve pencere arka planı
+            try { if (root != null) root.Background = new SolidColorBrush(WColor.FromArgb(0x00,0x00,0x00,0x00)); } catch { }
+            try { w.Background = new SolidColorBrush(WColor.FromArgb(0x00,0x00,0x00,0x00)); } catch { }
+            if (hud != null)
             {
-                foreach (var grid in new[] { ccGrid, settingsGrid })
-                {
-                    if (grid == null) continue;
-                    foreach (var tb in FindVisualChildren<System.Windows.Controls.TextBlock>(grid))
-                    {
-                        // Sadece sabit renkli olanları çevir: #888, #666, White
-                        var c = (tb.Foreground as SolidColorBrush)?.Color;
-                        if (c == null) continue;
-                        if (c.Value.R == 0x88 && c.Value.G == 0x88 && c.Value.B == 0x88)
-                            tb.Foreground = new SolidColorBrush(t.TextSecondary);
-                        else if (c.Value.R == 0xFF && c.Value.G == 0xFF && c.Value.B == 0xFF && tb.FontWeight == FontWeights.SemiBold)
-                            tb.Foreground = new SolidColorBrush(t.TextPrimary);
-                    }
-                }
+                try { hud.Background = new SolidColorBrush(WColor.FromRgb(0x11,0x11,0x13)); } catch { }
+                try { hud.BorderBrush = new SolidColorBrush(t.CardBorder); } catch { }
             }
-            catch { }
         }
         catch { }
+    }
+
+    private void ApplyTextTheme(IslandWindow w, ThemeDefinition t, System.Windows.DependencyObject? hud, System.Windows.DependencyObject? notif)
+    {
+        try
+        {
+            foreach (var tb in FindVisualChildren<System.Windows.Controls.TextBlock>(w))
+            {
+                if (IsInside(tb, hud) || IsInside(tb, notif)) continue; // zorla-koyu alanlar beyaz kalsın
+                if (!_textBaseline.TryGetValue(tb, out var orig))
+                {
+                    orig = (tb.Foreground as SolidColorBrush)?.Color ?? WColor.FromRgb(0xFF,0xFF,0xFF);
+                    _textBaseline[tb] = orig;
+                }
+                tb.Foreground = new SolidColorBrush(MapTextColor(orig, t));
+            }
+            foreach (var cb in FindVisualChildren<System.Windows.Controls.CheckBox>(w))
+            {
+                if (IsInside(cb, hud) || IsInside(cb, notif)) continue;
+                cb.Foreground = new SolidColorBrush(t.TextPrimary);
+            }
+            foreach (var cmb in FindVisualChildren<System.Windows.Controls.ComboBox>(w))
+            {
+                if (IsInside(cmb, hud) || IsInside(cmb, notif)) continue;
+                cmb.Foreground = new SolidColorBrush(t.TextPrimary);
+            }
+        }
+        catch { }
+    }
+
+    private static bool IsInside(System.Windows.DependencyObject child, System.Windows.DependencyObject? ancestor)
+    {
+        if (ancestor == null) return false;
+        var p = child;
+        while (p != null)
+        {
+            if (ReferenceEquals(p, ancestor)) return true;
+            p = System.Windows.Media.VisualTreeHelper.GetParent(p) ?? System.Windows.LogicalTreeHelper.GetParent(p);
+        }
+        return false;
+    }
+
+    // Orijinal renge göre tema metin rengine eşle:
+    //  - gri tonları (düşük doygunluk): beyaz/açık -> TextPrimary, koyu gri -> TextSecondary
+    //  - doygun (renkli) vurgular: korunur; açık temada açık kalanlar Accent'e çekilir (kontrast)
+    private static WColor MapTextColor(WColor c, ThemeDefinition t)
+    {
+        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
+        double lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        double sat = max <= 0 ? 0 : (max - min) / max;
+        if (sat < 0.18) // gri/beyaz
+            return lum > 0.55 ? t.TextPrimary : t.TextSecondary;
+        // renkli vurgu — açık temada çok açık kalıyorsa Accent'e çek
+        if (t.IsLight && lum > 0.6) return t.Accent;
+        return c;
     }
 
     private static IEnumerable<T> FindVisualChildren<T>(DependencyObject dep) where T : DependencyObject
